@@ -158,8 +158,7 @@ mod raw {
 		#[serde(rename = "piece length")]
 		pub piece_length: usize,
 		/// A hash list, i.e., a concatenation of each piece's SHA-1 hash. As SHA-1 returns a 160-bit hash, pieces will be a string whose length is a multiple of 20 bytes. If the torrent contains multiple files, the pieces are formed by concatenating the files in the order they appear in the files dictionary (i.e. all pieces in the torrent are the full piece length except for the last piece, which may be shorter)
-		#[serde(with = "serde_bytes")]
-		pub pieces: Vec<u8>
+		pub pieces: serde_bytes::ByteBuf
 	}
 
 	#[derive(Debug, Serialize, Deserialize)]

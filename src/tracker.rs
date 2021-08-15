@@ -151,8 +151,7 @@ mod raw {
 		/// Maps to the number of seconds the downloader should wait between regular rerequests
 		pub interval: Option<usize>,
 		/// List of dictionaries corresponding to peers
-		#[serde(with = "serde_bytes")]
-		pub peers: Option<Vec<u8>>
+		pub peers: Option<serde_bytes::ByteBuf>
 	}
 }
 
@@ -164,7 +163,7 @@ mod tests {
 	async fn test_announce() {
 		let tracker = Tracker::new("http://bttracker.debian.org:6969/announce");
 
-		let info_hash: [u8; 20] = [121, 146, 200, 2, 127, 106, 243, 152, 107, 62, 156, 53, 218, 159, 100, 231, 10, 242, 244, 240];
+		let info_hash: [u8; 20] = [154, 90, 140, 217, 173, 154, 190, 9, 16, 112, 10, 41, 14, 168, 97, 130, 46, 160, 90, 10];
 
 		tracker.announce(&Announce {
 			info_hash,
