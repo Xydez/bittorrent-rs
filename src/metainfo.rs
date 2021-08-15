@@ -58,7 +58,7 @@ impl MetaInfo {
 		let metadata: raw::MetaInfo = serde_bencode::from_bytes(buf)?;
 
 		let mut info_hash = [0u8; 20];
-		let digest = sha1::Sha1::digest(buf);
+		let digest = sha1::Sha1::digest(&serde_bencode::to_bytes(&metadata.info)?);
 		info_hash.copy_from_slice(&digest);
 
 		let pieces = metadata.info.pieces
@@ -138,7 +138,7 @@ pub struct FileInfo {
 }
 
 mod raw {
-	use serde::{Deserialize};
+	use serde::{Serialize, Deserialize};
 
 	#[derive(Debug, Deserialize)]
 	pub struct MetaInfo {
@@ -146,7 +146,7 @@ mod raw {
 		pub info: Info
 	}
 
-	#[derive(Debug, Deserialize)]
+	#[derive(Debug, Serialize, Deserialize)]
 	pub struct Info {
 		/// A list of dictionaries each corresponding to a file (only when multiple files are being shared)
 		pub files: Option<Vec<File>>,
@@ -162,7 +162,7 @@ mod raw {
 		pub pieces: Vec<u8>
 	}
 
-	#[derive(Debug, Deserialize)]
+	#[derive(Debug, Serialize, Deserialize)]
 	pub struct File {
 		/// Size of the file in bytes.
 		pub length: usize,
