@@ -1,4 +1,4 @@
-use std::convert::TryFrom;
+use std::{convert::TryFrom, net::{Ipv4Addr, SocketAddrV4}};
 
 #[derive(Debug)]
 pub enum TrackerError {
@@ -77,6 +77,7 @@ impl Tracker {
 	pub async fn announce(&self, announce: &Announce) -> Result<Response> {
 		let bytes = announce.peer_id.iter().collect::<String>().into_bytes();
 
+		// Note: We currently only support compact mode, maybe have raw::Response and raw::CompactResponse?
 		let mut query = vec![
 			("port", announce.port.to_string()),
 			("uploaded", announce.uploaded.to_string()),
@@ -93,7 +94,7 @@ impl Tracker {
 			}.to_string()));
 		}
 
-		// We need to set info_hash and peer_id here because the `query` params are automatically encoded, and we don't want to encode them twice
+		// Note: We need to set info_hash and peer_id here because the `query` params are automatically encoded, and we don't want to encode them twice
 		let url = format!("{}?info_hash={}&peer_id={}", self.announce, percent_encoding::percent_encode(&announce.info_hash, percent_encoding::NON_ALPHANUMERIC), percent_encoding::percent_encode(&bytes, percent_encoding::NON_ALPHANUMERIC));
 
 		let response_bytes = self.client.get(url)
@@ -116,8 +117,7 @@ impl Tracker {
 					.map(|chunk| <[u8; 6]>::try_from(chunk)
 						.map_err(|_| TrackerError::InvalidResponse)
 						.map(|chunk| Peer {
-							ip: std::net::Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]),
-							port: u16::from_le_bytes([chunk[4], chunk[5]])
+							address: SocketAddrV4::new(Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]), u16::from_be_bytes([chunk[4], chunk[5]]))
 						})
 					)
 					.collect::<Result<Vec<Peer>>>()?
@@ -134,10 +134,8 @@ pub struct Response {
 
 #[derive(Debug)]
 pub struct Peer {
-	/// IP address or dns name as a string
-	pub ip: std::net::Ipv4Addr,
-	/// Port number
-	pub port: u16
+	// IP address and port number
+	address: std::net::SocketAddrV4
 }
 
 mod raw {
@@ -160,6 +158,7 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
+	#[cfg_attr(not(feature = "network-tests"), ignore)]
 	async fn test_announce() {
 		let tracker = Tracker::new("http://bttracker.debian.org:6969/announce");
 

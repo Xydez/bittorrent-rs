@@ -2,6 +2,8 @@ use std::io::Read;
 use std::convert::TryFrom;
 use sha1::Digest;
 
+pub type Hash = [u8; 20];
+
 #[derive(Debug)]
 pub enum MetadataError {
 	IOError(std::io::Error),
@@ -46,8 +48,8 @@ impl std::error::Error for MetadataError {
 pub struct MetaInfo {
 	pub name: String,
 	pub tracker: String,
-	pub info_hash: [u8; 20],
-	pub pieces: Vec<[u8; 20]>,
+	pub info_hash: Hash,
+	pub pieces: Vec<Hash>,
 	pub piece_length: usize,
 	pub files: Vec<FileInfo>
 }
@@ -57,14 +59,14 @@ impl MetaInfo {
 	pub fn from_bytes(buf: &[u8]) -> Result<Self> {
 		let metadata: raw::MetaInfo = serde_bencode::from_bytes(buf)?;
 
-		let mut info_hash = [0u8; 20];
+		let mut info_hash: Hash = [0u8; 20];
 		let digest = sha1::Sha1::digest(&serde_bencode::to_bytes(&metadata.info)?);
 		info_hash.copy_from_slice(&digest);
 
 		let pieces = metadata.info.pieces
 			.chunks_exact(20)
-			.map(|chunk| <[u8; 20]>::try_from(chunk).map_err(|_| MetadataError::InvalidMetadata))
-			.collect::<Result<Vec<[u8; 20]>>>()?;
+			.map(|chunk| <Hash>::try_from(chunk).map_err(|_| MetadataError::InvalidMetadata))
+			.collect::<Result<Vec<Hash>>>()?;
 
 		let files = match metadata.info.files {
 			Some(files) => {

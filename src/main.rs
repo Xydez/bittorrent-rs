@@ -1,7 +1,9 @@
-use bittorrent::{metainfo::MetaInfo, tracker::{Announce, Tracker}};
+use bittorrent::{metainfo::MetaInfo, session::Session, tracker::{Announce, Tracker}};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+	let mut session = Session::new();
+
 	let meta = MetaInfo::load("debian-10.10.0-amd64-DVD-1.iso.torrent").unwrap();
 	println!("== {} ==", meta.name);
 	println!("{:<16}{}", "tracker", meta.tracker);
@@ -23,6 +25,8 @@ async fn main() {
 		left: 0,
 		event: None
 	}).await.unwrap();
+
+	session.add(meta);
 
 	println!("{:#?}", response);
 }
