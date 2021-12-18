@@ -5,12 +5,10 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Find a tracker that supports http announce
 
 ## todo medium
-* Bittorrent Enhancement Proposals
-  * BEP-0012 - Multiple trackers
-  * BEP-0015 - UDP Trackers
-  * BEP-0017 - Http seeds
-  * See https://en.wikipedia.org/wiki/Torrent_file
-  * See https://www.bittorrent.org/beps/bep_0000.html
+* See https://en.wikipedia.org/wiki/Torrent_file
+* See https://www.bittorrent.org/beps/bep_0003.html
+* See http://www.kristenwidman.com/blog/71/how-to-write-a-bittorrent-client-part-2/
+* See https://wiki.theory.org/BitTorrentSpecification#cancel:_.3Clen.3D0013.3E.3Cid.3D8.3E.3Cindex.3E.3Cbegin.3E.3Clength.3E
 
 ## todo long-term
 * Allow requesting specific byte ranges from the torrent, and the client will prioritize those pieces

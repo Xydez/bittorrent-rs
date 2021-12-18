@@ -51,7 +51,7 @@ pub enum Event {
 #[derive(Debug)]
 pub struct Announce {
 	pub info_hash: [u8; 20],
-	pub peer_id: [char; 20],
+	pub peer_id: [u8; 20],
 	pub ip: Option<std::net::Ipv4Addr>,
 	pub port: u16,
 	pub uploaded: usize,
@@ -74,8 +74,9 @@ impl Tracker {
 		};
 	}
 
+	/// Send an announce to the tracker
 	pub async fn announce(&self, announce: &Announce) -> Result<Response> {
-		let bytes = announce.peer_id.iter().collect::<String>().into_bytes();
+		// let peer_id = announce.peer_id.iter().collect::<String>().into_bytes();
 
 		// Note: We currently only support compact mode, maybe have raw::Response and raw::CompactResponse?
 		let mut query = vec![
@@ -94,8 +95,8 @@ impl Tracker {
 			}.to_string()));
 		}
 
-		// Note: We need to set info_hash and peer_id here because the `query` params are automatically encoded, and we don't want to encode them twice
-		let url = format!("{}?info_hash={}&peer_id={}", self.announce, percent_encoding::percent_encode(&announce.info_hash, percent_encoding::NON_ALPHANUMERIC), percent_encoding::percent_encode(&bytes, percent_encoding::NON_ALPHANUMERIC));
+		// Note: We need to set info_hash and peer_id here because the params are automatically encoded, and we don't want to encode them twice
+		let url = format!("{}?info_hash={}&peer_id={}", self.announce, percent_encoding::percent_encode(&announce.info_hash, percent_encoding::NON_ALPHANUMERIC), percent_encoding::percent_encode(&announce.peer_id, percent_encoding::NON_ALPHANUMERIC));
 
 		let response_bytes = self.client.get(url)
 			.query(&query)
@@ -111,16 +112,16 @@ impl Tracker {
 			Some(reason) => Err(TrackerError::TrackerError(reason)),
 			None => Ok(Response {
 				interval: response.interval.ok_or(TrackerError::InvalidResponse)?,
-				peers: response.peers
+				peers_addrs: response.peers
 					.ok_or(TrackerError::InvalidResponse)?
 					.chunks_exact(6)
 					.map(|chunk| <[u8; 6]>::try_from(chunk)
 						.map_err(|_| TrackerError::InvalidResponse)
-						.map(|chunk| Peer {
-							address: SocketAddrV4::new(Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]), u16::from_be_bytes([chunk[4], chunk[5]]))
-						})
+						.map(|chunk|
+							SocketAddrV4::new(Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]), u16::from_be_bytes([chunk[4], chunk[5]]))
+						)
 					)
-					.collect::<Result<Vec<Peer>>>()?
+					.collect::<Result<Vec<std::net::SocketAddrV4>>>()?
 			})
 		};
 	}
@@ -129,13 +130,7 @@ impl Tracker {
 #[derive(Debug)]
 pub struct Response {
 	pub interval: usize,
-	pub peers: Vec<Peer>
-}
-
-#[derive(Debug)]
-pub struct Peer {
-	// IP address and port number
-	address: std::net::SocketAddrV4
+	pub peers_addrs: Vec<std::net::SocketAddrV4>
 }
 
 mod raw {

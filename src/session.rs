@@ -1,19 +1,19 @@
 // https://discord.com/channels/442252698964721669/443150878111694848/876796316901068871
 
-use std::{sync::{Arc, Mutex}};
+use std::{sync::{Arc, RwLock}};
 
 use crate::{metainfo::{MetaInfo}, tracker::Tracker};
 
-type EventListener = Box<dyn FnMut(Arc<Mutex<SessionState>>, &Event)>;
+type EventListener = Box<dyn Fn(Arc<RwLock<SessionState>>, &EventDispatcher, &Event)>;
 
 pub struct EventDispatcher {
 	listeners: Vec<EventListener>
 }
 
 impl EventDispatcher {
-	pub fn dispatch(&mut self, session: Arc<Mutex<SessionState>>, event: Event) {
-		for listener in self.listeners.iter_mut() {
-			listener(session.clone(), &event);
+	pub fn dispatch(&self, session: Arc<RwLock<SessionState>>, event: Event) {
+		for listener in self.listeners.iter() {
+			listener(session.clone(), self, &event); // session.clone()
 		}
 	}
 
@@ -23,12 +23,12 @@ impl EventDispatcher {
 }
 
 pub struct SessionState {
+	id_counter: u32,
 	torrents: Vec<Torrent>
 }
 
 pub struct Session {
-	id_counter: u32,
-	state: Arc<Mutex<SessionState>>,
+	state: Arc<RwLock<SessionState>>,
 	dispatcher: EventDispatcher
 }
 
@@ -39,8 +39,8 @@ impl Session {
 		};
 	
 		let session = Session {
-			id_counter: 1,
-			state: Arc::new(Mutex::new(SessionState {
+			state: Arc::new(RwLock::new(SessionState {
+				id_counter: 1,
 				torrents: Vec::new()
 			})),
 			dispatcher
@@ -51,7 +51,7 @@ impl Session {
 
 	pub fn add(&mut self, meta_info: MetaInfo) {
 		let torrent = Torrent {
-			id: self.id_counter,
+			id: self.state.read().unwrap().id_counter,
 			trackers: vec![Tracker::new(&meta_info.tracker)],
 			pieces: Vec::new(),
 			meta_info
@@ -59,13 +59,13 @@ impl Session {
 
 		let event = Event::TorrentAdded(torrent.id);
 
-		self.id_counter += 1;
-		self.state.lock().unwrap().torrents.push(torrent);
+		self.state.write().unwrap().id_counter += 1;
+		self.state.write().unwrap().torrents.push(torrent);
 		
 		self.dispatcher.dispatch(self.state.clone(), event);
 	}
 
-	fn on(state: Arc<Mutex<SessionState>>, event: &Event) {
+	fn on(_state: Arc<RwLock<SessionState>>, _dispatcher: &EventDispatcher, event: &Event) {
 		match event {
 			Event::TorrentAdded(id) => {
 				println!("Torrent {} added", id);
@@ -89,9 +89,10 @@ struct Piece {
 
 #[derive(Debug)]
 enum Status {
-	Idle, Downloading, Completed
+	// Idle, Downloading, Completed
 }
 
+#[derive(Clone)]
 pub enum Event {
 	TorrentAdded(u32)
 }
