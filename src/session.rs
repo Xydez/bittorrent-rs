@@ -1,9 +1,8 @@
 use std::{sync::{Arc}};
 
-use futures::Future;
 use tokio::sync::Mutex;
 
-use crate::{metainfo::{MetaInfo}, tracker::Tracker, bitfield::Bitfield, store::{Store, MemoryStore}};
+use crate::{metainfo::{MetaInfo}, tracker::{Tracker, Announce}, bitfield::Bitfield, store::{Store, MemoryStore}};
 
 type EventListener = Box<dyn Fn(&Session, &EventDispatcher, &Event)>;
 type TrackerPtr = Arc<Mutex<Tracker>>;
@@ -26,7 +25,7 @@ impl EventDispatcher {
 }
 
 struct Work {
-	torrent: Torrent,
+	torrent: TorrentPtr,
 	piece: usize
 }
 
@@ -49,7 +48,8 @@ pub struct Session {
 
 #[derive(Clone)]
 pub enum Event {
-	TorrentAdded(TorrentPtr)
+	TorrentAdded(TorrentPtr),
+	WorkAdded
 }
 
 impl Session {
@@ -84,19 +84,40 @@ impl Session {
 		self.dispatcher.dispatch(&self, event);
 	}
 
-	fn on(_session: &Session, _dispatcher: &EventDispatcher, event: &Event) {
+	fn on(session: &Session, dispatcher: &EventDispatcher, event: &Event) {
 		let event = event.clone();
 
-		println!("On event");
-		
-		println!("Matching event...");
+		let peer_id = session.peer_id;
+		let work_queue = session.work_queue.clone();
 
-		match event {
-			Event::TorrentAdded(torrent) => {
-				println!("Torrent {} added", torrent.lock().await.info.name);
+		tokio::spawn(async move {
+			println!("Matching event...");
+
+			match event {
+				Event::TorrentAdded(torrent) => {
+					let torrent_lock = torrent.lock().await;
+					println!("Torrent {} added", torrent_lock.info.name);
+
+					let tracker_lock = torrent_lock.tracker.lock().await;
+
+					let announce = tracker_lock.announce(&Announce {
+						info_hash: torrent_lock.info.info_hash,
+						peer_id,
+						ip: None,
+						port: 8000,
+						uploaded: 0,
+						downloaded: 0,
+						left: 0,
+						event: None
+					}).await.unwrap();
+
+					// Add work. Right now it's added in order, but we should probably randomize the work instead
+					work_queue.lock().await.extend((0..torrent_lock.info.pieces.len())
+						.map(|i| Work { torrent: torrent.clone(), piece: i })
+					);
+				},
+				_ => ()
 			}
-		}
-
-		tokio::run()
+		});
 	}
 }

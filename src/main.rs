@@ -1,6 +1,6 @@
-use std::{thread, time::Duration};
+use std::time::Duration;
 
-use bittorrent::{metainfo::MetaInfo, peer::Peer, tracker::{Announce, Tracker}, session::Session};
+use bittorrent::{metainfo::MetaInfo, tracker::{Announce, Tracker}, session::Session};
 
 const PEER_ID: [u8; 20] = ['x' as u8; 20];
 
@@ -39,6 +39,6 @@ async fn main() {
 	// println!("{:#?}", peer);
 
 	loop {
-		thread::sleep(Duration::from_secs_f64(0.01));
+		tokio::time::sleep(Duration::from_secs_f64(0.5)).await;
 	}
 }
