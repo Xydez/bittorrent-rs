@@ -125,6 +125,10 @@ impl Tracker {
 			})
 		};
 	}
+
+	pub fn announce_url(&self) -> String {
+		self.announce.clone()
+	}
 }
 
 #[derive(Debug)]

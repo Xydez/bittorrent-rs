@@ -45,9 +45,10 @@ impl std::error::Error for MetadataError {
 	}
 }
 
+#[derive(Clone)]
 pub struct MetaInfo {
 	pub name: String,
-	pub tracker: String,
+	pub announce: String,
 	pub info_hash: Hash,
 	pub pieces: Vec<Hash>,
 	pub piece_length: usize,
@@ -100,7 +101,7 @@ impl MetaInfo {
 
 		return Ok(MetaInfo {
 			name: metadata.info.name,
-			tracker: metadata.announce,
+			announce: metadata.announce,
 			info_hash,
 			pieces,
 			piece_length: metadata.info.piece_length,
@@ -123,7 +124,7 @@ impl std::fmt::Debug for MetaInfo {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("MetaInfo")
 			.field("name", &self.name)
-			.field("tracker", &self.tracker)
+			.field("tracker", &self.announce)
 			.field("info_hash", &self.info_hash)
 			.field("pieces", &format!("<{} pieces>", &self.pieces.len()))
 			.field("piece_length", &self.piece_length)
@@ -132,11 +133,11 @@ impl std::fmt::Debug for MetaInfo {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileInfo {
-	path: std::path::PathBuf,
-	length: usize,
-	offset: usize
+	pub path: std::path::PathBuf,
+	pub length: usize,
+	pub offset: usize
 }
 
 mod raw {

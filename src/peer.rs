@@ -48,9 +48,18 @@ pub(crate) type Result<T> = std::result::Result<T, PeerError>;
 #[derive(Debug)]
 pub struct Peer {
 	stream: TcpStream,
+
+	/// Peer id of the peer
 	peer_id: [u8; 20],
+
+	/// Whether the peer has choked us
 	choked: bool,
-	interested: bool
+
+	/// Whether the peer is currently interested
+	interested: bool,
+
+	/// The pieces the peer is currently serving
+	pieces: Bitfield
 }
 
 struct Handshake {
@@ -72,34 +81,40 @@ struct Handshake {
 pub enum Message {
 	/// 'Choke' means that the peer serving the file is not currently accepting requests.
 	Choke,
+
 	/// 'Unchoke' means that the peer serving the file is currently accepting requests.
 	Unchoke,
+
 	/// ‘Interested’ means that the downloading client wants to download from the peer.
 	Interested,
+
 	/// ‘NotInterested’ means that the downloading client does not want to download from the peer.
 	NotInterested,
 
 	/// 'Have' means that the peer serving the file has started serving a piece.
+	/// * index - Piece index
 	Have(u32),
-	/// 'Bifield' sends the pieces that the peer serving the file has initial access to. Must be sent directly after handshake.
+
+	/// 'Bifield' sends the pieces that the peer serving the file has initial access to. May only be sent directly after handshake.
+	/// * bitfield - Pieces being served
 	Bitfield(Bitfield),
 
 	/// 'Request' requests a block from the peer serving the file.
-	/// * index (Piece index), 
-	/// * begin (Offset within piece measured in bytes)
-	/// * length (Block length, usually 16 384, sometimes truncated)
+	/// * index - Piece index, 
+	/// * begin - Offset within piece measured in bytes
+	/// * length - Block length, usually 16 384, sometimes truncated
 	Request(u32, u32, u32),
 
 	/// 'Piece' responds with the block that the downloading client has requested.
-	/// * index (Piece index)
-	/// * begin (Offset within piece measured in bytes)
-	/// * piece (Raw bytes for the requested block)
+	/// * index - Piece index
+	/// * begin - Offset within piece measured in bytes
+	/// * piece - Raw bytes for the requested block
 	Piece(u32, u32, Vec<u8>),
 
 	/// 'Cancel' means that the downloading client has already received a block.
-	/// * index (Piece index), 
-	/// * begin (Offset within piece measured in bytes)
-	/// * length (Block length, usually 16 384, sometimes truncated)
+	/// * index - Piece index, 
+	/// * begin - Offset within piece measured in bytes
+	/// * length - Block length, usually 16 384, sometimes truncated
 	Cancel(u32, u32, u32)
 }
 
@@ -122,7 +137,8 @@ impl Peer {
 			stream,
 			peer_id: handshake.peer_id,
 			choked: true,
-			interested: false
+			interested: false,
+			pieces: Bitfield::new(meta.pieces.len())
 		})
 	}
 
@@ -172,24 +188,39 @@ impl Peer {
 	
 	/// Receives a message from the peer
 	pub async fn receive_message(&mut self) -> Result<Message> {
-		let buffer = self.receive_raw().await?;
+		let buffer = self.receive_message_raw().await?;
 		let id = u32::from_be_bytes(buffer[0..4].try_into().unwrap());
 		let payload = &buffer[4..];
 
 		match id {
 			0..=3 => if payload.is_empty() {
 				match id {
-					0 => Ok(Message::Choke),
-					1 => Ok(Message::Unchoke),
-					2 => Ok(Message::Interested),
-					3 => Ok(Message::NotInterested),
+					0 => {
+						self.choked = true;
+						Ok(Message::Choke)
+					},
+					1 => {
+						self.choked = false;
+						Ok(Message::Unchoke)
+					},
+					2 => {
+						self.interested = true;
+						Ok(Message::Interested)
+					},
+					3 => {
+						self.interested = false;
+						Ok(Message::NotInterested)
+					},
 					_ => Err(PeerError::InvalidMessageError)
 				}
 			} else {
 					Err(PeerError::InvalidMessageError)
 			},
 			4 => Ok(Message::Have(u32::from_be_bytes(payload.try_into().map_err(|_| PeerError::InvalidMessageError)?))),
-			5 => Ok(Message::Bitfield(Bitfield::from_bytes(payload.to_vec()))),
+			5 => {
+				self.pieces = Bitfield::from_bytes(payload, self.pieces.len());
+				Ok(Message::Bitfield(self.pieces.clone()))
+			},
 			6 => if payload.len() == 3 * std::mem::size_of::<u32>() {
 				Ok(Message::Request(
 					u32::from_be_bytes(payload[0..4].try_into().unwrap()),
@@ -223,10 +254,36 @@ impl Peer {
 
 	/// Sends a message to the peer
 	pub async fn send_message(&mut self, message: Message) -> Result<()> {
-		todo!()
+		let mut data = Vec::<u8>::new();
+
+		let id = match message {
+			Message::Choke => 0,
+			Message::Unchoke => 1,
+			Message::Interested => 2,
+			Message::NotInterested => 3,
+			Message::Have(..) => 4,
+			Message::Bitfield(..) => 5,
+			Message::Request(..) => 6,
+			Message::Piece(..) => 7,
+			Message::Cancel(..) => 8
+		};
+
+		data.push(id);
+
+		match message {
+			Message::Have(index) => data.extend(index.to_be_bytes()),
+			Message::Bitfield(bitfield) => data.extend(bitfield.as_bytes()),
+			Message::Request(index, begin, length) => data.extend([index.to_be_bytes(), begin.to_be_bytes(), length.to_be_bytes()].concat()),
+			Message::Piece(index, begin, piece) => data.extend([&index.to_be_bytes(), &begin.to_be_bytes(), piece.as_slice()].concat()),
+			Message::Cancel(index, begin, length) => data.extend([index.to_be_bytes(), begin.to_be_bytes(), length.to_be_bytes()].concat()),
+			_ => ()
+		}
+
+		self.send_message_raw(data.as_slice()).await
 	}
 
-	async fn receive_raw(&mut self) -> Result<Vec<u8>> {
+	/// Sends a message with the wire protocol
+	async fn receive_message_raw(&mut self) -> Result<Vec<u8>> {
 		let length = self.stream.read_u32().await?;
 		let mut buffer = vec![0u8; length as usize];
 
@@ -235,9 +292,10 @@ impl Peer {
 		Ok(buffer)
 	}
 
-	async fn send_raw(&mut self, buffer: Vec<u8>) -> Result<()> {
+	/// Sends a message with the wire protocol
+	async fn send_message_raw(&mut self, buffer: &[u8]) -> Result<()> {
 		self.stream.write_u32(buffer.len().try_into().unwrap()).await?;
-		self.stream.write_all(buffer.as_slice()).await?;
+		self.stream.write_all(buffer).await?;
 
 		Ok(())
 	}
