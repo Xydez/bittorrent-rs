@@ -2,7 +2,9 @@
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 
 ## todo
-* Use an event-driven arcitecture (still with a work queue)
+* Add parallel requests (Increases download speed tremendously)
+* Store piece status as an enum instead of a bitfield, update the enum's state when downloading
+  * Needs a `as_bitfield()` method
 * See https://blog.jse.li/posts/torrent/
 * See https://en.wikipedia.org/wiki/Torrent_file
 * See https://www.bittorrent.org/beps/bep_0003.html
@@ -14,15 +16,3 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
   * Maybe have a priority byte for each torrent. The client will make sure all of the higher pieces are downloading before continuing to download the lower pieces.
 
 ┌┐└┘├┤┬┴┼╭╮╰╯─│
-
-TorrentAdded ─── Connect to peers and add work
-┌─ WorkAdded ─── All peer threads check for work
-├─ AvailablePiecesUpdated ─── That peer checks for work
-╰─── If work is found, pop it and start downloading
-
-fuck this do later
-
-
-TODO: We need to run async code in callbacks
-
-IDEA: Peer.add(work: Work)
