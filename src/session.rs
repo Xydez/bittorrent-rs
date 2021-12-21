@@ -41,12 +41,20 @@ struct Work {
 	length: usize
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum State {
+	None,
+	Downloaing,
+	Verifying,
+	Done
+}
+
 #[derive(Debug)]
 pub struct Torrent {
 	tracker: TrackerPtr,
 	info: MetaInfo,
 	peers: Vec<Peer>,
-	pieces: Bitfield,
+	pieces: Vec<State>, // Bitfield
 	store: Box<dyn Store>
 }
 
@@ -60,11 +68,14 @@ pub struct Session {
 	work_queue: Arc<Mutex<VecDeque<Work>>>
 }
 
+const MAX_REQUESTS: usize = 5;
+
 #[derive(Debug, Clone)]
 pub enum Event {
 	TorrentAdded(TorrentPtr),
 	WorkAdded,
-	PieceReceived(TorrentPtr, usize, Vec<u8>)
+	PieceReceived(TorrentPtr, usize, Vec<u8>),
+	PieceVerified(TorrentPtr, usize, Vec<u8>)
 }
 
 impl Session {
@@ -98,7 +109,7 @@ impl Session {
 			tracker: tracker,
 			info: info.clone(),
 			peers: Vec::new(),
-			pieces: Bitfield::new(info.pieces.len()),
+			pieces: vec![State::None; info.pieces.len()], // Bitfield::new(info.pieces.len())
 			store: Box::new(MemoryStore::new(info.files.iter().fold(0, |acc, file| acc + file.length)))
 		}));
 
@@ -136,21 +147,42 @@ impl Session {
 				// 	torrent.peers.
 				// }
 			},
-			Event::PieceReceived(torrent, piece, _data) => {
+			Event::PieceReceived(torrent, piece, data) => {
 				println!("Event::PieceReceived {}", piece);
 				
-				let lock = &mut torrent.lock().await.pieces;
+				torrent.lock().await.pieces[piece] = State::Verifying;
 
-				lock.set(piece, true).unwrap();
+				let tx = self.tx.clone();
 
-				let mut count = 0;
-				for i in 0..lock.len() {
-					if lock.get(i).unwrap() {
-						count += 1;
-					}
-				}
+				tokio::spawn(async move {
+					// For now, just instantly verify the piece
+					tx.send(Event::PieceVerified(torrent, piece, data)).await.unwrap();
+				});
 
-				println!("{}/{} pieces", count, lock.len());
+			},
+			Event::PieceVerified(torrent, piece, data) => {
+				println!("Event::PieceVerified {}", piece);
+
+				let mut lock = torrent.lock().await;
+				lock.pieces[piece] = State::Done;
+
+				let piece_length = lock.info.piece_length;
+				lock.store.set(piece * piece_length, &data);
+
+				// let mut count = 0;
+				// for i in 0..lock.pieces.len() {
+				// 	if lock.get(i).unwrap() {
+				// 		count += 1;
+				// 	}
+				// }
+
+				let none_count = lock.pieces.iter().filter(|p| p == &&State::None).count();
+				let downloading_count = lock.pieces.iter().filter(|p| p == &&State::Downloaing).count();
+				let verifying_count = lock.pieces.iter().filter(|p| p == &&State::Verifying).count();
+				let done_count = lock.pieces.iter().filter(|p| p == &&State::Done).count();
+				let total_count = lock.pieces.len();
+
+				println!("None: {}, Downloading: {}, Verifying: {}, Done: {}, Total: {}", none_count, downloading_count, verifying_count, done_count, total_count);
 			}
 		}
 	}
@@ -171,20 +203,6 @@ impl Session {
 			left: 0,
 			event: None
 		}).await.unwrap();
-		
-		// let futures = futures::future::join_all(
-		// announce.peers_addrs.iter()
-		// 		.map(|addr| tokio::time::timeout(Duration::from_secs_f64(3.0), Peer::connect(addr.clone(), &torrent_lock.info, &self.peer_id)))
-		// );
-		
-		// println!("Connecting to peers");
-
-		// let peers = futures.await.into_iter()
-		// 	.filter(|res| res.is_ok() && res.as_ref().unwrap().is_ok())
-		// 	.map(|res| res.unwrap().unwrap())
-		// 	.collect::<Vec<_>>();
-		
-		// println!("{}/{} peers done", peers.len(), announce.peers_addrs.len());
 
 		for addr in announce.peers_addrs {
 			let info = torrent_lock.info.clone();
@@ -192,6 +210,9 @@ impl Session {
 			let work_queue = self.work_queue.clone();
 
 			let tx = self.tx.clone();
+			let torrent = torrent.clone();
+
+			// let (incoming_tx, incoming_rx) = ...
 
 			tokio::spawn(async move {
 				let mut peer = match tokio::time::timeout(
@@ -218,15 +239,14 @@ impl Session {
 					let work = work_queue.lock().await.pop_front();
 
 					if let Some(work) = work {
-						// println!("{}", match work_queue.try_lock() {
-						// 	Ok(_) => "unlocked",
-						// 	Err(_) => "locked"
-						// });
-
 						if peer.has_piece(work.piece) {
+							torrent.lock().await.pieces[work.piece] = State::Downloaing;
+
 							println!("Downloading piece {}", work.piece);
 
 							let mut blocks = Vec::new();
+
+							let mut active_requests = 0;
 
 							// Attempt to download the block
 							for i in (0..work.length).step_by(BLOCK_SIZE) {
@@ -234,6 +254,11 @@ impl Session {
 
 								// println!("Requesting piece {} block {}", work.piece, i);
 								tokio::time::timeout(TIMEOUT, peer.send_message(Message::Request(work.piece as u32, i as u32, block_size as u32))).await.unwrap().unwrap();
+								active_requests += 1;
+
+								if active_requests < MAX_REQUESTS {
+									continue;
+								}
 
 								match tokio::time::timeout(Duration::from_secs_f64(3.0), peer.receive_message()).await {
 									Err(_) => {
@@ -241,18 +266,51 @@ impl Session {
 										break;
 									},
 									Ok(Ok(msg)) => match msg {
-										Message::Piece(index, begin, block) => {
+										Message::Piece(_index, begin, block) => {
 											// println!("Received piece {} block {} ({:.1}%)", index, begin, 100.0 * (begin as f64 + block.len() as f64) / work.length as f64);
 											blocks.push((begin, block));
 										},
 										Message::Choke => break,
 										msg => {
-											println!("{:?}", msg);
+											torrent.lock().await.pieces[work.piece] = State::None;
+
 											work_queue.lock().await.push_back(work);
-											panic!();
+											panic!("{:?}", msg);
 										}
 									},
 									Ok(Err(err)) => {
+										torrent.lock().await.pieces[work.piece] = State::None;
+
+										work_queue.lock().await.push_back(work);
+										panic!("{:?}", err);
+									}
+								}
+							}
+
+							for i in 0..active_requests {
+								// We really need to stop "counting requests" and use a channel instead. Maybe start another "listening thread" and use a channel to .recv the pieces (incoming pieces only channel, basically)
+								match tokio::time::timeout(Duration::from_secs_f64(3.0), peer.receive_message()).await {
+									Err(_) => {
+										println!("Request timed out");
+										break;
+									},
+									Ok(Ok(msg)) => match msg {
+										Message::Piece(_index, begin, block) => {
+											// println!("Received piece {} block {} ({:.1}%)", index, begin, 100.0 * (begin as f64 + block.len() as f64) / work.length as f64);
+											blocks.push((begin, block));
+										},
+										Message::Choke => break,
+										msg => {
+											torrent.lock().await.pieces[work.piece] = State::None;
+
+											work_queue.lock().await.push_back(work);
+											panic!("{:?}", msg);
+										}
+									},
+									Ok(Err(err)) => {
+										torrent.lock().await.pieces[work.piece] = State::None;
+
+										work_queue.lock().await.push_back(work);
 										panic!("{:?}", err);
 									}
 								}
@@ -273,13 +331,6 @@ impl Session {
 						break;
 					}
 				}
-
-				// while let Some(work) = self.work_queue.lock().await.pop() {
-				// 	if !peer.has_piece(work.piece) {
-				// 		self.work_queue
-				// 		continue;
-				// 	}
-				// }
 			});
 		}
 	}

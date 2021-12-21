@@ -4,8 +4,9 @@ use bittorrent::{metainfo::MetaInfo, session::Session};
 async fn main() {
 	let mut session = Session::new(['x' as u8; 20]);
 	
-	//debian-10.10.0-amd64-DVD-1.iso.torrent
-	let meta = MetaInfo::load("[mal lu zen] Senpai ga Uzai Kouhai no Hanashi - 11 [720p] 10-bit.mkv.torrent").unwrap();
+	// debian-10.10.0-amd64-DVD-1.iso.torrent
+	// [mal lu zen] Senpai ga Uzai Kouhai no Hanashi - 11 [720p] 10-bit.mkv.torrent
+	let meta = MetaInfo::load("debian-10.10.0-amd64-DVD-1.iso.torrent").unwrap();
 	println!("== {} ==", meta.name);
 	println!("{:<16}{}", "tracker", meta.announce);
 	println!("{:<16}{}", "pieces", meta.pieces.len());

@@ -2,9 +2,10 @@
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 
 ## todo
-* Add parallel requests (Increases download speed tremendously)
-* Store piece status as an enum instead of a bitfield, update the enum's state when downloading
-  * Needs a `as_bitfield()` method
+* (WIP) Add parallel requests (Increases download speed tremendously)
+* (WIP) Store piece status as an enum instead of a bitfield, update the enum's state when downloading
+  * Needs `as_bitfield()` method later if we want to support seeding
+* Use two threads and a channel for receiving pieces instead of crashing if we receive a message we didn't expect. Also clean up code.
 * See https://blog.jse.li/posts/torrent/
 * See https://en.wikipedia.org/wiki/Torrent_file
 * See https://www.bittorrent.org/beps/bep_0003.html
