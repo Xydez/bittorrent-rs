@@ -6,6 +6,7 @@ pub struct Bitfield {
 	data: Vec<u8>
 }
 
+#[derive(Debug)]
 pub enum BitfieldError {
     IndexOutOfBounds
 }

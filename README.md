@@ -24,3 +24,5 @@ fuck this do later
 
 
 TODO: We need to run async code in callbacks
+
+IDEA: Peer.add(work: Work)

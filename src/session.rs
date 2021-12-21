@@ -1,123 +1,299 @@
-use std::{sync::{Arc}};
+use std::{sync::{Arc}, time::Duration, collections::VecDeque};
 
-use tokio::sync::Mutex;
+use futures::Future;
+use tokio::sync::{Mutex, mpsc::{Receiver, Sender}};
 
-use crate::{metainfo::{MetaInfo}, tracker::{Tracker, Announce}, bitfield::Bitfield, store::{Store, MemoryStore}};
+use crate::{metainfo::MetaInfo, tracker::{Tracker, Announce}, bitfield::Bitfield, store::{Store, MemoryStore}, peer::{Peer, Message}};
 
-type EventListener = Box<dyn Fn(&Session, &EventDispatcher, &Event)>;
+// type EventListener = Box<dyn Fn(&Session, &EventDispatcher, &Event)>;
 type TrackerPtr = Arc<Mutex<Tracker>>;
 type TorrentPtr = Arc<Mutex<Torrent>>;
 
-pub struct EventDispatcher {
-	listeners: Vec<EventListener>
-}
+const BLOCK_SIZE: usize = 16_384;
+const TIMEOUT: Duration = Duration::from_secs_f64(3.0);
 
-impl EventDispatcher {
-	pub fn dispatch(&self, session: &Session, event: Event) {
-		for listener in self.listeners.iter() {
-			listener(session, self, &event);
-		}
-	}
+// pub struct EventDispatcher {
+// 	event_queue: Arc<Vec<Event>>,
+// 	listeners: Vec<EventListener>
+// }
 
-	pub fn add_listener(&mut self, listener: EventListener) {
-		self.listeners.push(listener);
-	}
-}
+// impl EventDispatcher {
+// 	pub fn push(&mut self, event: Event) {
+// 		self.event_queue.push(event);
+// 	}
+
+// 	pub fn dispatch(&mut self, session: &Session) {
+// 		for event in self.event_queue.iter() {
+// 			for listener in self.listeners.iter() {
+// 				listener(session, self, &event);
+// 			}
+// 		}
+// 	}
+
+// 	pub fn add_listener(&mut self, listener: EventListener) {
+// 		self.listeners.push(listener);
+// 	}
+// }
 
 struct Work {
 	torrent: TorrentPtr,
-	piece: usize
+	piece: usize,
+	length: usize
 }
 
 #[derive(Debug)]
 pub struct Torrent {
-	tracker: Arc<Mutex<Tracker>>,
+	tracker: TrackerPtr,
 	info: MetaInfo,
+	peers: Vec<Peer>,
 	pieces: Bitfield,
 	store: Box<dyn Store>
 }
 
 pub struct Session {
 	peer_id: [u8; 20],
-	dispatcher: EventDispatcher,
+	// dispatcher: EventDispatcher,
+	tx: Sender<Event>, rx: Receiver<Event>,
 
 	trackers: Vec<TrackerPtr>,
 	torrents: Vec<TorrentPtr>,
-	work_queue: Arc<Mutex<Vec<Work>>>
+	work_queue: Arc<Mutex<VecDeque<Work>>>
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Event {
 	TorrentAdded(TorrentPtr),
-	WorkAdded
+	WorkAdded,
+	PieceReceived(TorrentPtr, usize, Vec<u8>)
 }
 
 impl Session {
 	pub fn new(peer_id: [u8; 20]) -> Self {
-		let dispatcher = EventDispatcher {
-			listeners: vec![Box::new(Session::on)]
-		};
-	
+		let (tx, rx)  = tokio::sync::mpsc::channel(32);
+
+		// let dispatcher = EventDispatcher {
+			
+    	// 	event_queue: Arc::new(Vec::new()),
+		// 	listeners: vec![Box::new(Session::on)],
+		// };
+
 		let session = Session {
 			peer_id,
-			dispatcher,
+			tx, rx,
+			// dispatcher,
     		trackers: Vec::new(),
 			torrents: Vec::new(),
-			work_queue: Arc::new(Mutex::new(Vec::new()))
+			work_queue: Arc::new(Mutex::new(VecDeque::new()))
 		};
 	
 		return session;
 	}
 
 	pub async fn add(&mut self, info: MetaInfo) {
-		let tracker = Arc::new(Mutex::new(Tracker::new(&info.announce)));
+		let tracker = Tracker::new(&info.announce);
+
+		let tracker = Arc::new(Mutex::new(tracker));
 
 		let torrent = Arc::new(Mutex::new(Torrent {
-			tracker: tracker.clone(),
+			tracker: tracker,
 			info: info.clone(),
+			peers: Vec::new(),
 			pieces: Bitfield::new(info.pieces.len()),
 			store: Box::new(MemoryStore::new(info.files.iter().fold(0, |acc, file| acc + file.length)))
 		}));
 
 		let event = Event::TorrentAdded(torrent);
-		
-		self.dispatcher.dispatch(&self, event);
+
+		self.tx.send(event).await.expect("Failed to senc");
 	}
 
-	fn on(session: &Session, dispatcher: &EventDispatcher, event: &Event) {
-		let event = event.clone();
+	pub async fn poll_events(&mut self) {
+		let event = self.rx.recv().await.unwrap();
 
-		let peer_id = session.peer_id;
-		let work_queue = session.work_queue.clone();
+		// let peer_id = self.peer_id;
+		// let work_queue = self.work_queue.clone();
 
-		tokio::spawn(async move {
-			println!("Matching event...");
+		// println!("\nMatching event...");
 
-			match event {
-				Event::TorrentAdded(torrent) => {
-					let torrent_lock = torrent.lock().await;
-					println!("Torrent {} added", torrent_lock.info.name);
+		match event {
+			Event::TorrentAdded(torrent) => {
+				println!("Event::TorrentAdded {}", torrent.lock().await.info.name);
 
-					let tracker_lock = torrent_lock.tracker.lock().await;
+				self.add_torrent_work(torrent.clone()).await;
+				self.add_torrent_peers(torrent.clone()).await;
 
-					let announce = tracker_lock.announce(&Announce {
-						info_hash: torrent_lock.info.info_hash,
-						peer_id,
-						ip: None,
-						port: 8000,
-						uploaded: 0,
-						downloaded: 0,
-						left: 0,
-						event: None
-					}).await.unwrap();
+				// let tracker_lock = torrent_lock.tracker.lock().await;
+			},
+			Event::WorkAdded => {
+				println!("Event::WorkAdded");
 
-					// Add work. Right now it's added in order, but we should probably randomize the work instead
-					work_queue.lock().await.extend((0..torrent_lock.info.pieces.len())
-						.map(|i| Work { torrent: torrent.clone(), piece: i })
-					);
-				},
-				_ => ()
+				// let mut work_queue = self.work_queue.lock().await;
+
+				// for _ in 0..work_queue.len() {
+				// 	let work = work_queue.pop().unwrap();
+				// 	let torrent = work.torrent.lock().await;
+					
+				// 	torrent.peers.
+				// }
+			},
+			Event::PieceReceived(torrent, piece, _data) => {
+				println!("Event::PieceReceived {}", piece);
+				
+				let lock = &mut torrent.lock().await.pieces;
+
+				lock.set(piece, true).unwrap();
+
+				let mut count = 0;
+				for i in 0..lock.len() {
+					if lock.get(i).unwrap() {
+						count += 1;
+					}
+				}
+
+				println!("{}/{} pieces", count, lock.len());
 			}
-		});
+		}
+	}
+
+	async fn add_torrent_peers(&mut self, torrent: TorrentPtr) {
+		println!("Adding peers for torrent...");
+
+		let torrent_lock = torrent.lock().await;
+		let tracker_lock = torrent_lock.tracker.lock().await;
+
+		let announce = tracker_lock.announce(&Announce {
+			info_hash: torrent_lock.info.info_hash,
+			peer_id: self.peer_id,
+			ip: None,
+			port: 8000,
+			uploaded: 0,
+			downloaded: 0,
+			left: 0,
+			event: None
+		}).await.unwrap();
+		
+		// let futures = futures::future::join_all(
+		// announce.peers_addrs.iter()
+		// 		.map(|addr| tokio::time::timeout(Duration::from_secs_f64(3.0), Peer::connect(addr.clone(), &torrent_lock.info, &self.peer_id)))
+		// );
+		
+		// println!("Connecting to peers");
+
+		// let peers = futures.await.into_iter()
+		// 	.filter(|res| res.is_ok() && res.as_ref().unwrap().is_ok())
+		// 	.map(|res| res.unwrap().unwrap())
+		// 	.collect::<Vec<_>>();
+		
+		// println!("{}/{} peers done", peers.len(), announce.peers_addrs.len());
+
+		for addr in announce.peers_addrs {
+			let info = torrent_lock.info.clone();
+			let peer_id = self.peer_id;
+			let work_queue = self.work_queue.clone();
+
+			let tx = self.tx.clone();
+
+			tokio::spawn(async move {
+				let mut peer = match tokio::time::timeout(
+					Duration::from_secs_f64(3.0),
+					Peer::connect(addr, &info, &peer_id)
+				).await {
+					Ok(v) => v,
+					Err(_) => return
+				}.unwrap();
+
+				// https://github.com/veggiedefender/torrent-client/blob/2bde944888e1195e81cc5d5b686f6ec3a9f08c25/p2p/p2p.go#L133
+
+				// peer.send_message(Message::Unchoke).await.unwrap();
+				peer.send_message(Message::Interested).await.unwrap();
+
+				// Bitfield or have
+				
+				while peer.choked() {
+					peer.receive_message().await.unwrap();
+				}
+
+				while !peer.choked() {
+					// println!("Grabbing work");
+					let work = work_queue.lock().await.pop_front();
+
+					if let Some(work) = work {
+						// println!("{}", match work_queue.try_lock() {
+						// 	Ok(_) => "unlocked",
+						// 	Err(_) => "locked"
+						// });
+
+						if peer.has_piece(work.piece) {
+							println!("Downloading piece {}", work.piece);
+
+							let mut blocks = Vec::new();
+
+							// Attempt to download the block
+							for i in (0..work.length).step_by(BLOCK_SIZE) {
+								let block_size = (work.length - i).min(BLOCK_SIZE);
+
+								// println!("Requesting piece {} block {}", work.piece, i);
+								tokio::time::timeout(TIMEOUT, peer.send_message(Message::Request(work.piece as u32, i as u32, block_size as u32))).await.unwrap().unwrap();
+
+								match tokio::time::timeout(Duration::from_secs_f64(3.0), peer.receive_message()).await {
+									Err(_) => {
+										println!("Request timed out");
+										break;
+									},
+									Ok(Ok(msg)) => match msg {
+										Message::Piece(index, begin, block) => {
+											// println!("Received piece {} block {} ({:.1}%)", index, begin, 100.0 * (begin as f64 + block.len() as f64) / work.length as f64);
+											blocks.push((begin, block));
+										},
+										Message::Choke => break,
+										msg => {
+											println!("{:?}", msg);
+											work_queue.lock().await.push_back(work);
+											panic!();
+										}
+									},
+									Ok(Err(err)) => {
+										panic!("{:?}", err);
+									}
+								}
+							}
+
+							// Assemble the blocks into a piece
+							println!("Assembling piece {}", work.piece);
+							blocks.sort_by(|(a, _), (b, _)| a.cmp(&b));
+							let data = blocks.into_iter().map(|(_offset, data)| data).flatten().collect::<Vec<_>>();
+
+							tx.send(Event::PieceReceived(work.torrent, work.piece, data)).await.unwrap();
+						} else {
+							work_queue.lock().await.push_back(work);
+						}
+
+					} else {
+						println!("No work available");
+						break;
+					}
+				}
+
+				// while let Some(work) = self.work_queue.lock().await.pop() {
+				// 	if !peer.has_piece(work.piece) {
+				// 		self.work_queue
+				// 		continue;
+				// 	}
+				// }
+			});
+		}
+	}
+
+	async fn add_torrent_work(&mut self, torrent: TorrentPtr) {
+		println!("Adding work for torrent...");
+
+		let torrent_lock = torrent.lock().await;
+
+		// Add work. Right now it's added in order, but we should probably randomize the work instead
+		self.work_queue.lock().await.extend((0..torrent_lock.info.pieces.len())
+			.map(|i| Work { torrent: torrent.clone(), piece: i, length: torrent_lock.info.piece_length })
+		);
+
+		self.tx.send(Event::WorkAdded).await.unwrap();
 	}
 }

@@ -1,4 +1,4 @@
-// #![feature(type_alias_impl_trait)]
+#![feature(duration_consts_2)]
 
 pub mod bitfield;
 pub mod metainfo;

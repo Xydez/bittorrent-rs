@@ -10,7 +10,7 @@ pub enum PeerError {
 	BencodeError(serde_bencode::Error),
 	StringEncodeError(std::string::FromUtf8Error),
 	InvalidProtocolError,
-	InvalidMessageError
+	InvalidMessageError(String)
 }
 
 impl From<std::io::Error> for PeerError {
@@ -78,7 +78,11 @@ struct Handshake {
 /// * 6 - Request
 /// * 7 - Piece
 /// * 8 - Cancel
+#[derive(Debug, Clone)]
 pub enum Message {
+	/// KeepAlive is a message of length zero to keep the connection alive
+	KeepAlive,
+
 	/// 'Choke' means that the peer serving the file is not currently accepting requests.
 	Choke,
 
@@ -125,13 +129,17 @@ impl Peer {
 	pub async fn connect(addr: std::net::SocketAddrV4, meta: &MetaInfo, peer_id: &[u8; 20]) -> Result<Peer> {
 		let mut stream = TcpStream::connect(addr).await?;
 
+		// println!("[{}] Initializing handshake", addr);
+		
 		Peer::send_handshake(&mut stream, Handshake {
 			extensions: [0; 8],
 			info_hash: meta.info_hash,
 			peer_id: *peer_id
 		}).await?;
-
+		
 		let handshake = Peer::receive_handshake(&mut stream).await?;
+
+		// println!("[{}] Handshake done", addr);
 
 		Ok(Peer {
 			stream,
@@ -140,6 +148,14 @@ impl Peer {
 			interested: false,
 			pieces: Bitfield::new(meta.pieces.len())
 		})
+	}
+
+	pub fn has_piece(&self, piece: usize) -> bool {
+		self.pieces.get(piece).unwrap()
+	}
+
+	pub fn choked(&self) -> bool {
+		return self.choked;
 	}
 
 	/// Sends the handshake info to the peer
@@ -188,9 +204,17 @@ impl Peer {
 	
 	/// Receives a message from the peer
 	pub async fn receive_message(&mut self) -> Result<Message> {
+		// Messages of length zero are keepalives, and ignored. Keepalives are generally sent once every two minutes, but note that timeouts can be done much more quickly when data is expected.
+
 		let buffer = self.receive_message_raw().await?;
-		let id = u32::from_be_bytes(buffer[0..4].try_into().unwrap());
-		let payload = &buffer[4..];
+
+		if buffer.len() == 0 {
+			return Ok(Message::KeepAlive);
+		}
+
+		let id = buffer[0];
+		// let id = u32::from_be_bytes(buffer[0..4].try_into().unwrap());
+		let payload = &buffer[1..];
 
 		match id {
 			0..=3 => if payload.is_empty() {
@@ -211,12 +235,12 @@ impl Peer {
 						self.interested = false;
 						Ok(Message::NotInterested)
 					},
-					_ => Err(PeerError::InvalidMessageError)
+					_ => unreachable!()
 				}
 			} else {
-					Err(PeerError::InvalidMessageError)
+				Err(PeerError::InvalidMessageError("Message id 0-3 cannot have a payload".to_string()))
 			},
-			4 => Ok(Message::Have(u32::from_be_bytes(payload.try_into().map_err(|_| PeerError::InvalidMessageError)?))),
+			4 => Ok(Message::Have(u32::from_be_bytes(payload.try_into().map_err(|_| PeerError::InvalidMessageError(format!("Message id 4 requires a payload of exactly 4 bytes (Got {})", payload.len())))?))),
 			5 => {
 				self.pieces = Bitfield::from_bytes(payload, self.pieces.len());
 				Ok(Message::Bitfield(self.pieces.clone()))
@@ -228,7 +252,7 @@ impl Peer {
 					u32::from_be_bytes(payload[8..12].try_into().unwrap())
 				))
 			} else {
-				Err(PeerError::InvalidMessageError)
+				Err(PeerError::InvalidMessageError(format!("Message id 6 requires a payload of exactly 12 bytes (Got {})", payload.len())))
 			},
 			7 => if payload.len() > 2 * std::mem::size_of::<u32>() {
 				Ok(Message::Piece(
@@ -237,7 +261,7 @@ impl Peer {
 					payload[8..].to_vec()
 				))
 			} else {
-				Err(PeerError::InvalidMessageError)
+				Err(PeerError::InvalidMessageError(format!("Message id 7 requires a payload of more than 8 bytes (Got {})", payload.len())))
 			},
 			8 => if payload.len() == 3 * std::mem::size_of::<u32>() {
 				Ok(Message::Cancel(
@@ -246,9 +270,9 @@ impl Peer {
 					u32::from_be_bytes(payload[8..12].try_into().unwrap())
 				))
 			} else {
-				Err(PeerError::InvalidMessageError)
+				Err(PeerError::InvalidMessageError(format!("Message id 8 requires a payload of exactly 12 bytes (Got {})", payload.len())))
 			},
-			_ => Err(PeerError::InvalidMessageError)
+			id => Err(PeerError::InvalidMessageError(format!("Message ids must be between 0-8 (Got {})", id)))
 		}
 	}
 
@@ -265,7 +289,10 @@ impl Peer {
 			Message::Bitfield(..) => 5,
 			Message::Request(..) => 6,
 			Message::Piece(..) => 7,
-			Message::Cancel(..) => 8
+			Message::Cancel(..) => 8,
+			Message::KeepAlive => {
+				return self.stream.write_u32(0).await.map_err(|err| PeerError::IOError(err));
+			}
 		};
 
 		data.push(id);
