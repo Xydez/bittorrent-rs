@@ -17,3 +17,21 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
   * Maybe have a priority byte for each torrent. The client will make sure all of the higher pieces are downloading before continuing to download the lower pieces.
 
 ┌┐└┘├┤┬┴┼╭╮╰╯─│
+
+Peer as duplex stream
+
+peer.on<peer::Event::Handshake>(|event: HandshakeEvent| {
+  ...
+})
+
+* what is a duplex stream?
+* rust duplex streams
+
+
+
+-- Sidenote: live transcoding later --
+
+* https://blog.webtor.io/en/post/technologies-inside-webtor.io/
+* https://docs.fileformat.com/video/mkv/
+* https://tools.ietf.org/id/draft-ietf-cellar-ebml-03.html#rfc.section.1
+* https://github.com/webtor-io/content-transcoder

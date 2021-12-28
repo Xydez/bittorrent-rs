@@ -165,7 +165,7 @@ mod tests {
 
 		tracker.announce(&Announce {
 			info_hash,
-			peer_id: ['x'; 20],
+			peer_id: [120; 20],
 			ip: None,
 			port: 8000,
 			uploaded: 0,

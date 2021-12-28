@@ -2,28 +2,18 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Bitfield {
-    length: usize,
 	data: Vec<u8>
 }
-
-#[derive(Debug)]
-pub enum BitfieldError {
-    IndexOutOfBounds
-}
-
-type Result<T> = std::result::Result<T, BitfieldError>;
 
 impl Bitfield {
     pub fn new(length: usize) -> Bitfield {
         Bitfield {
-            length,
             data: vec![0; if length % 8 == 0 { length / 8 } else { length / 8 + 1 }]
         }
     }
 
-    pub fn from_bytes(data: &[u8], length: usize) -> Bitfield {
+    pub fn from_bytes(data: &[u8]) -> Bitfield {
         Bitfield {
-            length,
             data: data.to_vec()
         }
     }
@@ -33,32 +23,16 @@ impl Bitfield {
     }
 
     /// Get a bit from the bitfield
-    pub fn get(&self, i: usize) -> Result<bool> {
-        if i >= self.length {
-            Err(BitfieldError::IndexOutOfBounds)
-        } else {
-            Ok(self.data[i / 8] & (1 << i % 8) != 0)
-        }
+    pub fn get(&self, i: usize) -> bool {
+        self.data[i / 8] & (1 << i % 8) != 0
     }
 
     /// Set a bit in the bitfield
-    pub fn set(&mut self, i: usize, value: bool) -> Result<()> {
-        if i >= self.length {
-            Err(BitfieldError::IndexOutOfBounds)
+    pub fn set(&mut self, i: usize, value: bool) {
+        if value {
+            self.data[i / 8] = self.data[i / 8] | (1 << i % 8);
         } else {
-            if value {
-                self.data[i / 8] = self.data[i / 8] | (1 << i % 8);
-            } else {
-                self.data[i / 8] = self.data[i / 8] & (0b11111111 ^ (1 << i % 8));
-            }
-            
-            Ok(())
+            self.data[i / 8] = self.data[i / 8] & (0b11111111 ^ (1 << i % 8));
         }
-    }
-
-
-    /// Returns the bits the bitfield can contain
-    pub fn len(&self) -> usize {
-        self.length
     }
 }
