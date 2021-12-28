@@ -68,6 +68,7 @@ pub struct Session {
 	work_queue: Arc<Mutex<VecDeque<Work>>>
 }
 
+/// The maximum amount of simultaneous requests that can be sent to a peer
 const MAX_REQUESTS: usize = 5;
 
 #[derive(Debug, Clone)]
@@ -82,16 +83,9 @@ impl Session {
 	pub fn new(peer_id: [u8; 20]) -> Self {
 		let (tx, rx)  = tokio::sync::mpsc::channel(32);
 
-		// let dispatcher = EventDispatcher {
-			
-    	// 	event_queue: Arc::new(Vec::new()),
-		// 	listeners: vec![Box::new(Session::on)],
-		// };
-
 		let session = Session {
 			peer_id,
 			tx, rx,
-			// dispatcher,
     		_trackers: Vec::new(),
 			_torrents: Vec::new(),
 			work_queue: Arc::new(Mutex::new(VecDeque::new()))
@@ -121,31 +115,15 @@ impl Session {
 	pub async fn poll_events(&mut self) {
 		let event = self.rx.recv().await.unwrap();
 
-		// let peer_id = self.peer_id;
-		// let work_queue = self.work_queue.clone();
-
-		// println!("\nMatching event...");
-
 		match event {
 			Event::TorrentAdded(torrent) => {
 				println!("Event::TorrentAdded {}", torrent.lock().await.info.name);
 
 				self.add_torrent_work(torrent.clone()).await;
 				self.add_torrent_peers(torrent.clone()).await;
-
-				// let tracker_lock = torrent_lock.tracker.lock().await;
 			},
 			Event::WorkAdded => {
 				println!("Event::WorkAdded");
-
-				// let mut work_queue = self.work_queue.lock().await;
-
-				// for _ in 0..work_queue.len() {
-				// 	let work = work_queue.pop().unwrap();
-				// 	let torrent = work.torrent.lock().await;
-					
-				// 	torrent.peers.
-				// }
 			},
 			Event::PieceReceived(torrent, piece, data) => {
 				println!("Event::PieceReceived {}", piece);
@@ -168,13 +146,6 @@ impl Session {
 
 				let piece_length = lock.info.piece_length;
 				lock.store.set(piece * piece_length, &data);
-
-				// let mut count = 0;
-				// for i in 0..lock.pieces.len() {
-				// 	if lock.get(i).unwrap() {
-				// 		count += 1;
-				// 	}
-				// }
 
 				let none_count = lock.pieces.iter().filter(|p| p == &&State::None).count();
 				let downloading_count = lock.pieces.iter().filter(|p| p == &&State::Downloaing).count();
@@ -231,8 +202,6 @@ impl Session {
 				// peer.send_message(Message::Unchoke).await.unwrap();
 				peer.send(Message::Interested).await.unwrap();
 
-				// Bitfield or have
-				
 				loop {
 					if peer.peer_choking() {
 						// 1. Wait until we are unchoked
@@ -317,11 +286,8 @@ impl Session {
 							blocks.push((begin, block));
 							active_requests -= 1;
 						},
-						Message::Choke => {
-							return Err(());
-						},
-						Message::Unchoke => (), // Since we are already unchoked, this should not do anything
-						msg => panic!("{:?}", msg) // Temporary
+						// TODO: In the future we might have two queues, one for received pieces and one for requested pieces, and we have two separate threads that keep on requesting and sending pieces.
+						_ => ()
 					},
 					Ok(Err(err)) => {
 						eprintln!("{:#?}", err);
