@@ -1,6 +1,6 @@
-use std::io::Read;
-use std::convert::TryFrom;
 use sha1::Digest;
+use std::convert::TryFrom;
+use std::io::Read;
 
 pub type Hash = [u8; 20];
 
@@ -48,10 +48,12 @@ impl std::error::Error for MetadataError {
 #[derive(Clone)]
 pub struct MetaInfo {
 	pub name: String,
+	pub length: usize,
 	pub announce: String,
 	pub info_hash: Hash,
 	pub pieces: Vec<Hash>,
 	pub piece_length: usize,
+	pub last_piece_length: usize,
 	pub files: Vec<FileInfo>
 }
 
@@ -64,7 +66,9 @@ impl MetaInfo {
 		let digest = sha1::Sha1::digest(&serde_bencode::to_bytes(&metadata.info)?);
 		info_hash.copy_from_slice(&digest);
 
-		let pieces = metadata.info.pieces
+		let pieces = metadata
+			.info
+			.pieces
 			.chunks_exact(20)
 			.map(|chunk| <Hash>::try_from(chunk).map_err(|_| MetadataError::InvalidMetadata))
 			.collect::<Result<Vec<Hash>>>()?;
@@ -89,22 +93,28 @@ impl MetaInfo {
 			},
 			None => match metadata.info.length {
 				None => return Err(MetadataError::InvalidMetadata),
-				Some(length) => vec![
-					FileInfo {
-						path: metadata.info.name.clone().into(),
-						length,
-						offset: 0
-					}
-				]
+				Some(length) => vec![FileInfo {
+					path: metadata.info.name.clone().into(),
+					length,
+					offset: 0
+				}]
 			}
 		};
 
+		let length = files.iter().fold(0, |acc, x| acc + x.length);
+
 		return Ok(MetaInfo {
 			name: metadata.info.name,
+			length,
 			announce: metadata.announce,
 			info_hash,
 			pieces,
 			piece_length: metadata.info.piece_length,
+			last_piece_length: if length % metadata.info.piece_length == 0 {
+				metadata.info.piece_length
+			} else {
+				length % metadata.info.piece_length
+			},
 			files
 		});
 	}
@@ -141,7 +151,7 @@ pub struct FileInfo {
 }
 
 mod raw {
-	use serde::{Serialize, Deserialize};
+	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Deserialize)]
 	pub struct MetaInfo {

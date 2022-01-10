@@ -1,7 +1,7 @@
 #![feature(duration_consts_2)]
 
 pub mod bitfield;
-pub mod event;
+// pub mod event;
 pub mod metainfo;
 pub mod peer;
 pub mod session;

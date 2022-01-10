@@ -5,7 +5,7 @@ pub struct Dispatcher<E> {
 impl<E> Dispatcher<E> {
 	pub fn new() -> Dispatcher<E> {
 		Dispatcher {
-    		listeners: Vec::new(),
+			listeners: Vec::new()
 		}
 	}
 

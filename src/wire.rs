@@ -1,5 +1,8 @@
 use std::convert::TryInto;
-use tokio::{net::TcpStream, io::{AsyncReadExt, AsyncWriteExt}};
+use tokio::{
+	io::{AsyncReadExt, AsyncWriteExt},
+	net::TcpStream
+};
 
 use crate::bitfield::Bitfield;
 
@@ -64,7 +67,7 @@ pub enum Message {
 	Bitfield(Bitfield),
 
 	/// 'Request' requests a block from the peer serving the file.
-	/// * index - Piece index, 
+	/// * index - Piece index,
 	/// * begin - Offset within piece measured in bytes
 	/// * length - Block length, usually 16 384, sometimes truncated
 	Request(u32, u32, u32),
@@ -76,7 +79,7 @@ pub enum Message {
 	Piece(u32, u32, Vec<u8>),
 
 	/// 'Cancel' means that the downloading client has already received a block.
-	/// * index - Piece index, 
+	/// * index - Piece index,
 	/// * begin - Offset within piece measured in bytes
 	/// * length - Block length, usually 16 384, sometimes truncated
 	Cancel(u32, u32, u32)
@@ -90,9 +93,7 @@ pub struct Wire {
 impl Wire {
 	/// Initialize the peer wire
 	pub fn new(stream: TcpStream) -> Wire {
-		Wire {
-			stream
-		}
+		Wire { stream }
 	}
 
 	/// Receives a message from the peer
@@ -110,57 +111,73 @@ impl Wire {
 		let payload = &buffer[1..];
 
 		match id {
-			0..=3 => if payload.is_empty() {
-				match id {
-					0 => {
-						Ok(Message::Choke)
-					},
-					1 => {
-						Ok(Message::Unchoke)
-					},
-					2 => {
-						Ok(Message::Interested)
-					},
-					3 => {
-						Ok(Message::NotInterested)
-					},
-					_ => unreachable!()
-				}
-			} else {
-				Err(WireError::InvalidMessageError("Message id 0-3 cannot have a payload".to_string()))
-			},
-			4 => Ok(Message::Have(u32::from_be_bytes(payload.try_into().map_err(|_| WireError::InvalidMessageError(format!("Message id 4 requires a payload of exactly 4 bytes (Got {})", payload.len())))?))),
-			5 => {
-				Ok(Message::Bitfield(Bitfield::from_bytes(payload)))
-			},
-			6 => if payload.len() == 3 * std::mem::size_of::<u32>() {
-				Ok(Message::Request(
-					u32::from_be_bytes(payload[0..4].try_into().unwrap()),
-					u32::from_be_bytes(payload[4..8].try_into().unwrap()),
-					u32::from_be_bytes(payload[8..12].try_into().unwrap())
-				))
-			} else {
-				Err(WireError::InvalidMessageError(format!("Message id 6 requires a payload of exactly 12 bytes (Got {})", payload.len())))
-			},
-			7 => if payload.len() > 2 * std::mem::size_of::<u32>() {
-				Ok(Message::Piece(
-					u32::from_be_bytes(payload[0..4].try_into().unwrap()),
-					u32::from_be_bytes(payload[4..8].try_into().unwrap()),
-					payload[8..].to_vec()
-				))
-			} else {
-				Err(WireError::InvalidMessageError(format!("Message id 7 requires a payload of more than 8 bytes (Got {})", payload.len())))
-			},
-			8 => if payload.len() == 3 * std::mem::size_of::<u32>() {
-				Ok(Message::Cancel(
-					u32::from_be_bytes(payload[0..4].try_into().unwrap()),
-					u32::from_be_bytes(payload[4..8].try_into().unwrap()),
-					u32::from_be_bytes(payload[8..12].try_into().unwrap())
-				))
-			} else {
-				Err(WireError::InvalidMessageError(format!("Message id 8 requires a payload of exactly 12 bytes (Got {})", payload.len())))
-			},
-			id => Err(WireError::InvalidMessageError(format!("Message ids must be between 0-8 (Got {})", id)))
+			0..=3 =>
+				if payload.is_empty() {
+					match id {
+						0 => Ok(Message::Choke),
+						1 => Ok(Message::Unchoke),
+						2 => Ok(Message::Interested),
+						3 => Ok(Message::NotInterested),
+						_ => unreachable!()
+					}
+				} else {
+					Err(WireError::InvalidMessageError(
+						"Message id 0-3 cannot have a payload".to_string()
+					))
+				},
+			4 => Ok(Message::Have(u32::from_be_bytes(
+				payload.try_into().map_err(|_| {
+					WireError::InvalidMessageError(format!(
+						"Message id 4 requires a payload of exactly 4 bytes (Got {})",
+						payload.len()
+					))
+				})?
+			))),
+			5 => Ok(Message::Bitfield(Bitfield::from_bytes(payload))),
+			6 =>
+				if payload.len() == 3 * std::mem::size_of::<u32>() {
+					Ok(Message::Request(
+						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
+						u32::from_be_bytes(payload[4..8].try_into().unwrap()),
+						u32::from_be_bytes(payload[8..12].try_into().unwrap())
+					))
+				} else {
+					Err(WireError::InvalidMessageError(format!(
+						"Message id 6 requires a payload of exactly 12 bytes (Got {})",
+						payload.len()
+					)))
+				},
+			7 =>
+				if payload.len() > 2 * std::mem::size_of::<u32>() {
+					Ok(Message::Piece(
+						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
+						u32::from_be_bytes(payload[4..8].try_into().unwrap()),
+						payload[8..].to_vec()
+					))
+				} else {
+					// Message id 7 requires a payload of more than 8 bytes (Got 8)
+					Err(WireError::InvalidMessageError(format!(
+						"Message id 7 requires a payload of more than 8 bytes (Got {})",
+						payload.len()
+					)))
+				},
+			8 =>
+				if payload.len() == 3 * std::mem::size_of::<u32>() {
+					Ok(Message::Cancel(
+						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
+						u32::from_be_bytes(payload[4..8].try_into().unwrap()),
+						u32::from_be_bytes(payload[8..12].try_into().unwrap())
+					))
+				} else {
+					Err(WireError::InvalidMessageError(format!(
+						"Message id 8 requires a payload of exactly 12 bytes (Got {})",
+						payload.len()
+					)))
+				},
+			id => Err(WireError::InvalidMessageError(format!(
+				"Message ids must be between 0-8 (Got {})",
+				id
+			)))
 		}
 	}
 
@@ -179,7 +196,11 @@ impl Wire {
 			Message::Piece(..) => 7,
 			Message::Cancel(..) => 8,
 			Message::KeepAlive => {
-				return self.stream.write_u32(0).await.map_err(|err| WireError::NetworkError(err));
+				return self
+					.stream
+					.write_u32(0)
+					.await
+					.map_err(|err| WireError::NetworkError(err));
 			}
 		};
 
@@ -188,9 +209,24 @@ impl Wire {
 		match message {
 			Message::Have(index) => data.extend(index.to_be_bytes()),
 			Message::Bitfield(bitfield) => data.extend(bitfield.as_bytes()),
-			Message::Request(index, begin, length) => data.extend([index.to_be_bytes(), begin.to_be_bytes(), length.to_be_bytes()].concat()),
-			Message::Piece(index, begin, piece) => data.extend([&index.to_be_bytes(), &begin.to_be_bytes(), piece.as_slice()].concat()),
-			Message::Cancel(index, begin, length) => data.extend([index.to_be_bytes(), begin.to_be_bytes(), length.to_be_bytes()].concat()),
+			Message::Request(index, begin, length) => data.extend(
+				[
+					index.to_be_bytes(),
+					begin.to_be_bytes(),
+					length.to_be_bytes()
+				]
+				.concat()
+			),
+			Message::Piece(index, begin, piece) =>
+				data.extend([&index.to_be_bytes(), &begin.to_be_bytes(), piece.as_slice()].concat()),
+			Message::Cancel(index, begin, length) => data.extend(
+				[
+					index.to_be_bytes(),
+					begin.to_be_bytes(),
+					length.to_be_bytes()
+				]
+				.concat()
+			),
 			_ => ()
 		}
 
@@ -199,7 +235,9 @@ impl Wire {
 
 	/// Sends data over the wire
 	async fn send_raw(&mut self, buffer: &[u8]) -> Result<()> {
-		self.stream.write_u32(buffer.len().try_into().unwrap()).await?;
+		self.stream
+			.write_u32(buffer.len().try_into().unwrap())
+			.await?;
 		self.stream.write_all(buffer).await?;
 
 		Ok(())
@@ -247,7 +285,9 @@ impl Wire {
 	/// Sends the handshake info to the peer
 	pub async fn send_handshake(&mut self, handshake: &Handshake) -> Result<()> {
 		// Length prefixed protocol name
-		self.stream.write_u8(PROTOCOL.len().try_into().unwrap()).await?;
+		self.stream
+			.write_u8(PROTOCOL.len().try_into().unwrap())
+			.await?;
 		self.stream.write_all(PROTOCOL.as_bytes()).await?;
 
 		// Supported extensions. Currently, none are supported.

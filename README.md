@@ -1,6 +1,9 @@
 # bittorrent-rs
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 
+See:
+* [Inofficial BitTorrent specification](https://wiki.theory.org/index.php/BitTorrentSpecification)
+
 ## todo
 * (WIP) Add parallel requests (Increases download speed tremendously)
 * (WIP) Store piece status as an enum instead of a bitfield, update the enum's state when downloading
@@ -35,3 +38,21 @@ peer.on<peer::Event::Handshake>(|event: HandshakeEvent| {
 * https://docs.fileformat.com/video/mkv/
 * https://tools.ietf.org/id/draft-ietf-cellar-ebml-03.html#rfc.section.1
 * https://github.com/webtor-io/content-transcoder
+
+torrent to magnet:
+session.getMagnet(magnet: string) -> MetaInfo
+
+note:
+* Should add trackers as well
+
+see:
+* https://www.bittorrent.org/beps/bep_0009.html
+* https://www.bittorrent.org/beps/bep_0010.html
+
+
+# TODO: The last piece is shorter, must optimize for that
+# ^ Bug: Results in the last piece getting stuck because its locks in receiving
+
+
+
+// TODO: We should wait until a torrent added message or something like that in the peer threads instead of sleeping

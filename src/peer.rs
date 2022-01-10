@@ -1,4 +1,7 @@
-use crate::{wire::{Wire, Message, WireError, Handshake}, bitfield::Bitfield};
+use crate::{
+	bitfield::Bitfield,
+	wire::{Handshake, Message, Wire, WireError}
+};
 
 use tokio::net::TcpStream;
 
@@ -22,9 +25,9 @@ impl std::error::Error for PeerError {
 }
 
 impl From<WireError> for PeerError {
-    fn from(error: WireError) -> Self {
-        PeerError::WireError(error)
-    }
+	fn from(error: WireError) -> Self {
+		PeerError::WireError(error)
+	}
 }
 
 pub(crate) type Result<T> = std::result::Result<T, PeerError>;
