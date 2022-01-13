@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc, time::{Duration, Instant}, convert::{TryFrom}};
+use std::{collections::VecDeque, sync::Arc, time::{Duration}, convert::{TryFrom}};
 
 use sha1::{Digest, Sha1};
 use tokio::{
