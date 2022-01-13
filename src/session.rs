@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, io::Write, sync::Arc, time::Duration};
+use std::{collections::VecDeque, sync::Arc, time::{Duration, Instant}, convert::{TryFrom}};
 
 use sha1::{Digest, Sha1};
 use tokio::{
@@ -118,48 +118,43 @@ impl Session {
 		return session;
 	}
 
-	pub async fn add(&mut self, info: MetaInfo, mut store: Box<dyn Store>) {
+	pub async fn add(&mut self, info: MetaInfo, store: Box<dyn Store>) {
 		let mut pieces = vec![State::Pending; info.pieces.len()];
 
+		let store = Arc::new(Mutex::new(store));
+
 		if VERIFY_STORE {
-			let stdout = std::io::stdout();
-			let mut lock = stdout.lock();
+			// for (i, info_hash) in info.pieces.iter().enumerate() {
+			// 	let data = store
+			// 		.get(
+			// 			i * info.piece_size,
+			// 			if i == info.pieces.len() - 1 {
+			// 				info.last_piece_size
+			// 			} else {
+			// 				info.piece_size
+			// 			}
+			// 		)
+			// 		.expect("Failed to get data from store");
 
-			write!(lock, "Verifying store...").unwrap();
-			lock.flush().unwrap();
+			// 	let mut out = [0u8; 20];
+			// 	out.copy_from_slice(&Sha1::digest(&data));
 
-			for (i, info_hash) in info.pieces.iter().enumerate() {
-				{
-					write!(lock, "\rVerifying store... {}/{}", i, info.pieces.len()).unwrap();
-					lock.flush().unwrap();
-				}
+			// 	if info_hash == &out {
+			// 		pieces[i] = State::Done;
+			// 	}
+			// }
 
-				let data = store
-					.get(
-						i * info.piece_length,
-						if i == info.pieces.len() - 1 {
-							info.last_piece_length
-						} else {
-							info.piece_length
-						}
-					)
-					.expect("Failed to get data from store");
-
-				let mut out = [0u8; 20];
-				out.copy_from_slice(&Sha1::digest(&data));
-
-				if info_hash == &out {
+			for (i, v) in verify_store(&info, store.clone()).await.into_iter().enumerate() {
+				if v {
 					pieces[i] = State::Done;
 				}
 			}
 
-			writeln!(
-				lock,
+			println!(
 				"\nStore verified. {}/{} pieces already done.",
 				pieces.iter().filter(|p| p == &&State::Done).count(),
 				pieces.len()
-			)
-			.unwrap();
+			);
 		}
 
 		let tracker = self
@@ -174,7 +169,7 @@ impl Session {
 			info: info.clone(),
 			peers: Vec::new(),
 			pieces, // Bitfield::new(info.pieces.len())
-			store
+			store: Arc::try_unwrap(store).unwrap().into_inner()
 		}));
 
 		let event = Event::TorrentAdded(torrent);
@@ -215,10 +210,7 @@ impl Session {
 
 					let hash = work.torrent.lock().await.info.pieces[work.piece];
 
-					let mut out = [0u8; 20];
-					out.copy_from_slice(&Sha1::digest(data.as_slice()));
-
-					if hash == out {
+					if verify_piece(&data, &hash) {
 						tx.send(Event::PieceVerified(work, data)).await.unwrap();
 					} else {
 						tx.send(Event::PieceNotVerified(work, data)).await.unwrap();
@@ -231,7 +223,7 @@ impl Session {
 				let mut lock = work.torrent.lock().await;
 				lock.pieces[work.piece] = State::Done;
 
-				let piece_length = lock.info.piece_length;
+				let piece_length = lock.info.piece_size;
 				lock.store
 					.set(work.piece * piece_length, &data)
 					.expect("Failed to write to store");
@@ -404,9 +396,9 @@ impl Session {
 					torrent: torrent.clone(),
 					piece: i,
 					length: if i == torrent_lock.info.pieces.len() - 1 {
-						torrent_lock.info.last_piece_length
+						torrent_lock.info.last_piece_size
 					} else {
-						torrent_lock.info.piece_length
+						torrent_lock.info.piece_size
 					}
 				})
 		);
@@ -486,4 +478,92 @@ impl Session {
 
 		Ok(data)
 	}
+}
+
+fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
+	hash == &<[u8; 20]>::try_from(Sha1::digest(&piece).as_slice()).unwrap()
+}
+
+async fn verify_store(info: &MetaInfo, store: Arc<Mutex<Box<dyn Store>>>) -> Vec<bool> {
+	let pieces = Arc::new(std::sync::Mutex::new(vec![false; info.pieces.len()]));
+
+	let iter = Arc::new(std::sync::Mutex::new(info.pieces.clone().into_iter().enumerate()));
+	
+	let threads = (num_cpus::get() - 1).max(1);
+
+	println!("Starting {} threads...", threads);
+		
+	let handles = (0..threads).map(|_i| {
+		let info = info.clone();
+		let iter = iter.clone();
+		let store = store.clone();
+		let pieces = pieces.clone();
+
+		std::thread::spawn(move || {
+			// TODO: Might lock during the entire loop, watch out!
+			// let mut last = Instant::now();
+
+			// Some((i, hash))
+			let mut v;
+
+			loop {
+				v = iter.lock().unwrap().next();
+
+				if v == None {
+					break;
+				}
+
+				let (i, hash) = v.unwrap();
+
+				// let begin = Instant::now();
+
+				let data = store.blocking_lock()
+					.get(
+						i * info.piece_size,
+						if i == info.pieces.len() - 1 {
+							info.last_piece_size
+						} else {
+							info.piece_size
+						}
+					)
+					.expect("Failed to get data from store");
+				
+				// let data_dur = Instant::now() - begin;
+
+				// let begin = Instant::now();
+				
+				if verify_piece(&data, &hash) {
+					pieces.lock().unwrap()[i] = true;
+				}
+				// let verify_dur = Instant::now() - begin;
+
+				// let tot = data_dur + verify_dur;
+
+				// let end = Instant::now();
+
+				// println!(
+				// 	"{}.\tPiece {} verified in {}ns ({}ns/{:.1}% + {}ns/{:.1}%). Misc. time: {}ns/{:.1}%",
+				// 	ti,
+				// 	i,
+				// 	tot.as_nanos(),
+				// 	data_dur.as_nanos(),
+				// 	100.0 * data_dur.as_secs_f64() / tot.as_secs_f64(),
+				// 	verify_dur.as_nanos(),
+				// 	100.0 * verify_dur.as_secs_f64() / tot.as_secs_f64(),
+				// 	(end - last - tot).as_nanos(),
+				// 	(end - last - tot).as_secs_f64() / (end - last).as_secs_f64()
+				// );
+
+				// last = end;
+			}
+		})
+	}).collect::<Vec<_>>();
+
+	println!("Verifying pieces...");
+
+	for handle in handles {
+		handle.join().unwrap();
+	}
+
+	Arc::try_unwrap(pieces).unwrap().into_inner().unwrap()
 }

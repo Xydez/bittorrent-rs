@@ -52,8 +52,8 @@ pub struct MetaInfo {
 	pub announce: String,
 	pub info_hash: Hash,
 	pub pieces: Vec<Hash>,
-	pub piece_length: usize,
-	pub last_piece_length: usize,
+	pub piece_size: usize,
+	pub last_piece_size: usize,
 	pub files: Vec<FileInfo>
 }
 
@@ -109,8 +109,8 @@ impl MetaInfo {
 			announce: metadata.announce,
 			info_hash,
 			pieces,
-			piece_length: metadata.info.piece_length,
-			last_piece_length: if length % metadata.info.piece_length == 0 {
+			piece_size: metadata.info.piece_length,
+			last_piece_size: if length % metadata.info.piece_length == 0 {
 				metadata.info.piece_length
 			} else {
 				length % metadata.info.piece_length
@@ -137,7 +137,7 @@ impl std::fmt::Debug for MetaInfo {
 			.field("tracker", &self.announce)
 			.field("info_hash", &self.info_hash)
 			.field("pieces", &format!("<{} pieces>", &self.pieces.len()))
-			.field("piece_length", &self.piece_length)
+			.field("piece_length", &self.piece_size)
 			.field("files", &self.files)
 			.finish()
 	}
