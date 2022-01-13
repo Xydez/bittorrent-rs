@@ -124,26 +124,6 @@ impl Session {
 		let store = Arc::new(Mutex::new(store));
 
 		if VERIFY_STORE {
-			// for (i, info_hash) in info.pieces.iter().enumerate() {
-			// 	let data = store
-			// 		.get(
-			// 			i * info.piece_size,
-			// 			if i == info.pieces.len() - 1 {
-			// 				info.last_piece_size
-			// 			} else {
-			// 				info.piece_size
-			// 			}
-			// 		)
-			// 		.expect("Failed to get data from store");
-
-			// 	let mut out = [0u8; 20];
-			// 	out.copy_from_slice(&Sha1::digest(&data));
-
-			// 	if info_hash == &out {
-			// 		pieces[i] = State::Done;
-			// 	}
-			// }
-
 			for (i, v) in verify_store(&info, store.clone()).await.into_iter().enumerate() {
 				if v {
 					pieces[i] = State::Done;
@@ -151,7 +131,7 @@ impl Session {
 			}
 
 			println!(
-				"\nStore verified. {}/{} pieces already done.",
+				"Store verified. {}/{} pieces already done.",
 				pieces.iter().filter(|p| p == &&State::Done).count(),
 				pieces.len()
 			);
