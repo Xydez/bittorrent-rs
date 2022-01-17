@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, sync::Arc, time::{Duration}, convert::{TryFrom}};
+use std::{collections::VecDeque, sync::Arc, time::{Duration}, convert::{TryFrom}, net::SocketAddrV4};
 
 use sha1::{Digest, Sha1};
 use tokio::{
@@ -20,7 +20,9 @@ use crate::{
 type TrackerPtr = Arc<Mutex<Tracker>>;
 type TorrentPtr = Arc<Mutex<Torrent>>;
 
+/// An increased block size might mean a huge increase in performance. 16 KiB is the default.
 const BLOCK_SIZE: usize = 16_384;
+const ANNOUNCE_RETRIES: usize = 5;
 const TIMEOUT: Duration = Duration::from_secs_f64(30.0);
 const VERIFY_STORE: bool = true;
 
@@ -208,18 +210,15 @@ impl Session {
 					.set(work.piece * piece_length, &data)
 					.expect("Failed to write to store");
 
-				let none_count = lock.pieces.iter().filter(|p| p == &&State::Pending).count();
-				let downloading_count = lock
-					.pieces
-					.iter()
-					.filter(|p| p == &&State::Downloaing)
-					.count();
+				let pending_count = lock.pieces.iter().filter(|p| p == &&State::Pending).count();
+				let downloading_count = lock.pieces.iter().filter(|p| p == &&State::Downloaing).count();
+				let verifying_count = lock.pieces.iter().filter(|p| p == &&State::Verifying).count();
 				let done_count = lock.pieces.iter().filter(|p| p == &&State::Done).count();
 				let total_count = lock.pieces.len();
 
 				println!(
-					"None: {}, Downloading: {}, Done: {}, Total: {}",
-					none_count, downloading_count, done_count, total_count
+					"Pending: {}, Downloading: {}, Verifying: {}, Done: {}, Total: {} ({} in queue)",
+					pending_count, downloading_count, verifying_count, done_count, total_count, self.work_queue.lock().await.len()
 				);
 			},
 			Event::PieceNotVerified(work, _data) => {
@@ -233,16 +232,140 @@ impl Session {
 		}
 	}
 
+	async fn peer_thread(
+		addr: SocketAddrV4,
+		work_queue: Arc<Mutex<VecDeque<Work>>>,
+		info: &MetaInfo,
+		torrent: TorrentPtr,
+		peer_id: [u8; 20],
+		tx: Sender<Event>
+	) {
+		let result = match tokio::time::timeout(TIMEOUT, TcpStream::connect(addr)).await {
+			Ok(v) => v,
+			Err(_) => return
+		};
+
+		let stream = match result {
+			Ok(v) => v,
+			Err(_) => {
+				eprintln!("Error: Failed to connect to peer");
+				return;
+			}
+		};
+
+		let result = Peer::handshake(
+			stream,
+			Handshake {
+				extensions: [0; 8],
+				info_hash: info.info_hash,
+				peer_id
+			}
+		)
+		.await;
+
+		let mut peer = match result {
+			Ok(v) => v,
+			Err(_) => {
+				eprintln!("Error: Handshake failed");
+				return;
+			}
+		};
+
+		// https://github.com/veggiedefender/torrent-client/blob/2bde944888e1195e81cc5d5b686f6ec3a9f08c25/p2p/p2p.go#L133
+
+		// peer.send_message(Message::Unchoke).await.expect("Failed to send Message::Unchoke");
+		peer.send(Message::Interested)
+			.await
+			.expect("Failed to send Message::Interested");
+
+		loop {
+			if peer.peer_choking() {
+				// 1. Wait until we are unchoked
+				peer.receive()
+					.await
+					.expect("Failed to receive message (while waiting for unchoke)");
+			} else {
+				// 2. As long as we are unchoked, do work from the queue
+
+				// println!("Grabbing work");
+
+				let work = {
+					let mut lock = work_queue.lock().await;
+
+					if let Some(i) = lock.iter().enumerate().find(|(_, v)| peer.has_piece(v.piece)).map(|(i, _)| i) {
+						lock.remove(i)
+					} else {
+						None
+					}
+
+					// if lock.front().filter(|v| {
+					// 	let has = peer.has_piece(v.piece);
+					// 	println!("{} has_piece({}): {}", to_hex(peer.peer_id()), v.piece, has);
+					// 	has
+					// }).is_some() {
+					// 	Some(lock.pop_front().unwrap())
+					// } else {
+					// 	None
+					// }
+				};
+
+				if let Some(work) = work {
+					// if peer.has_piece(work.piece) {
+					torrent.lock().await.pieces[work.piece] = State::Downloaing;
+
+					println!("Downloading piece {}", work.piece);
+
+					match Session::get_piece(&mut peer, &work).await {
+						Ok(data) => {
+							torrent.lock().await.pieces[work.piece] = State::Downloaded;
+							tx.send(Event::PieceReceived(work, data)).await.unwrap();
+						},
+						Err(err) => {
+							println!("Failed to download piece {}", work.piece);
+
+							torrent.lock().await.pieces[work.piece] = State::Pending;
+							work_queue.lock().await.push_back(work);
+
+							match err {
+								DownloadError::Timeout => {
+									eprintln!("Connection timed out");
+									break;
+								},
+								DownloadError::PeerError(error) => {
+									eprintln!("A peer error occurred: {:#?}", error);
+									break;
+								},
+								_ => ()
+							}
+						}
+					}
+					// } else {
+					// 	println!("Peer does not have piece. Pushing back to stack.");
+					// 	work_queue.lock().await.push_back(work);
+
+					// 	// Sleep to give another peer the chance
+					// 	tokio::time::sleep(Duration::from_secs_f64(5.0)).await;
+					// }
+				} else {
+					// println!("No work available");
+					// break;
+					tokio::time::sleep(Duration::from_secs_f64(5.0)).await;
+				}
+			}
+		}
+
+		println!("Severing connection");
+	}
+
 	async fn add_torrent_peers(&mut self, torrent: TorrentPtr) {
 		println!("Adding peers for torrent...");
 
 		let torrent_lock = torrent.lock().await;
 
-		let announce = torrent_lock
-			.tracker
-			.lock()
-			.await
-			.announce(&Announce {
+		let announce = {
+			let mut i = 0;
+
+			let announce = Announce {
 				info_hash: torrent_lock.info.info_hash,
 				peer_id: self.peer_id,
 				ip: None,
@@ -251,9 +374,41 @@ impl Session {
 				downloaded: 0,
 				left: 0,
 				event: None
-			})
-			.await
-			.expect("Failed to announce");
+			};
+
+			loop {
+				if i < ANNOUNCE_RETRIES {
+					let ret = torrent_lock.tracker.lock().await.announce(&announce).await.ok();
+
+					if ret.is_some() {
+						break ret;
+					} else {
+						eprintln!("Failed to announce. Retrying...")
+					}
+				} else {
+					break None;
+				}
+
+				i += 1;
+			}
+		}.expect("Failed to announce");
+
+		// let announce = torrent_lock
+		// 	.tracker
+		// 	.lock()
+		// 	.await
+		// 	.announce(&Announce {
+		// 		info_hash: torrent_lock.info.info_hash,
+		// 		peer_id: self.peer_id,
+		// 		ip: None,
+		// 		port: 8000,
+		// 		uploaded: 0,
+		// 		downloaded: 0,
+		// 		left: 0,
+		// 		event: None
+		// 	})
+		// 	.await
+		// 	.expect("Failed to announce");
 
 		for addr in announce.peers_addrs {
 			let info = torrent_lock.info.clone();
@@ -264,100 +419,7 @@ impl Session {
 			let torrent = torrent.clone();
 
 			tokio::spawn(async move {
-				let result = match tokio::time::timeout(TIMEOUT, TcpStream::connect(addr)).await {
-					Ok(v) => v,
-					Err(_) => return
-				};
-
-				let stream = match result {
-					Ok(v) => v,
-					Err(_) => {
-						eprintln!("Error: Failed to connect to peer");
-						return;
-					}
-				};
-
-				let result = Peer::handshake(
-					stream,
-					Handshake {
-						extensions: [0; 8],
-						info_hash: info.info_hash,
-						peer_id
-					}
-				)
-				.await;
-
-				let mut peer = match result {
-					Ok(v) => v,
-					Err(_) => {
-						eprintln!("Error: Handshake failed");
-						return;
-					}
-				};
-
-				//.expect("Handshake failed");
-
-				// https://github.com/veggiedefender/torrent-client/blob/2bde944888e1195e81cc5d5b686f6ec3a9f08c25/p2p/p2p.go#L133
-
-				// peer.send_message(Message::Unchoke).await.expect("Failed to send Message::Unchoke");
-				peer.send(Message::Interested)
-					.await
-					.expect("Failed to send Message::Interested");
-
-				loop {
-					if peer.peer_choking() {
-						// 1. Wait until we are unchoked
-						peer.receive()
-							.await
-							.expect("Failed to receive message (while waiting for unchoke)");
-					} else {
-						// 2. As long as we are unchoked, do work from the queue
-
-						// println!("Grabbing work");
-						let work = work_queue.lock().await.pop_front();
-
-						if let Some(work) = work {
-							if peer.has_piece(work.piece) {
-								torrent.lock().await.pieces[work.piece] = State::Downloaing;
-
-								println!("Downloading piece {}", work.piece);
-
-								match Session::get_piece(&mut peer, &work).await {
-									Ok(data) => {
-										torrent.lock().await.pieces[work.piece] = State::Downloaded;
-										tx.send(Event::PieceReceived(work, data)).await.unwrap();
-									},
-									Err(err) => {
-										println!("Failed to download piece {}", work.piece);
-
-										torrent.lock().await.pieces[work.piece] = State::Pending;
-										work_queue.lock().await.push_back(work);
-
-										match err {
-											DownloadError::Timeout => {
-												eprintln!("Connection timed out");
-												break;
-											},
-											DownloadError::PeerError(error) => {
-												eprintln!("A peer error occurred: {:#?}", error);
-												break;
-											},
-											_ => ()
-										}
-									}
-								}
-							} else {
-								work_queue.lock().await.push_back(work);
-							}
-						} else {
-							// println!("No work available");
-							// break;
-							tokio::time::sleep(Duration::from_secs_f64(5.0)).await;
-						}
-					}
-				}
-
-				println!("Severing connection");
+				Session::peer_thread(addr, work_queue, &info, torrent, peer_id, tx).await;
 			});
 		}
 	}
@@ -459,6 +521,10 @@ impl Session {
 		Ok(data)
 	}
 }
+
+// fn to_hex(data: &[u8]) -> String {
+// 	data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join("")
+// }
 
 fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
 	hash == &<[u8; 20]>::try_from(Sha1::digest(&piece).as_slice()).unwrap()

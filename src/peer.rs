@@ -36,10 +36,16 @@ pub(crate) type Result<T> = std::result::Result<T, PeerError>;
 pub struct Peer {
 	wire: Wire,
 
+	peer_id: [u8; 20],
+
+	/// The extensions the peer supports
+	/// TODO: Maybe store as u64 or as a Extensions type.
+	extensions: [u8; 8],
+
 	/// Whether we are choking the peer
-	choking: bool,
+	am_choking: bool,
 	/// Whether we are interested in the peer
-	interested: bool,
+	am_interested: bool,
 
 	/// Whether the peer has choked us
 	peer_choking: bool,
@@ -50,7 +56,7 @@ pub struct Peer {
 	peer_pieces: Option<Bitfield>
 }
 
-// Idea: Peer is basically Wire but with state
+// Todo: Idea - Peer is basically Wire but with state
 
 impl Peer {
 	pub async fn handshake(stream: TcpStream, handshake: Handshake) -> Result<Peer> {
@@ -63,10 +69,14 @@ impl Peer {
 			return Err(PeerError::InvalidHandshake);
 		}
 
+		// TODO: If the initiator of the connection receives a handshake in which the peer_id does not match the expected peerid, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
+
 		Ok(Peer {
 			wire,
-			choking: true,
-			interested: false,
+			peer_id: peer_handshake.peer_id,
+			extensions: peer_handshake.extensions,
+			am_choking: true,
+			am_interested: false,
 			peer_choking: true,
 			peer_interested: false,
 			peer_pieces: None
@@ -75,10 +85,10 @@ impl Peer {
 
 	pub async fn send(&mut self, message: Message) -> Result<()> {
 		match message {
-			Message::Choke => self.choking = true,
-			Message::Unchoke => self.choking = false,
-			Message::Interested => self.interested = true,
-			Message::NotInterested => self.interested = false,
+			Message::Choke => self.am_choking = true,
+			Message::Unchoke => self.am_choking = false,
+			Message::Interested => self.am_interested = true,
+			Message::NotInterested => self.am_interested = false,
 			_ => ()
 		};
 
@@ -101,12 +111,20 @@ impl Peer {
 		Ok(message)
 	}
 
-	pub fn choking(&self) -> bool {
-		self.choking
+	pub fn peer_id(&self) -> &[u8; 20] {
+		&self.peer_id
 	}
 
-	pub fn interested(&self) -> bool {
-		self.interested
+	pub fn extensions(&self) -> &[u8; 8] {
+		&self.extensions
+	}
+
+	pub fn am_choking(&self) -> bool {
+		self.am_choking
+	}
+
+	pub fn am_interested(&self) -> bool {
+		self.am_interested
 	}
 
 	pub fn peer_choking(&self) -> bool {
