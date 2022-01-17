@@ -1,5 +1,4 @@
-#![feature(duration_consts_2)]
-#![feature(async_closure)]
+#![feature(duration_consts_float)]
 
 pub mod bitfield;
 // pub mod event;

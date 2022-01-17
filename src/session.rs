@@ -23,8 +23,8 @@ type TorrentPtr = Arc<Mutex<Torrent>>;
 /// An increased block size might mean a huge increase in performance. 16 KiB is the default.
 const BLOCK_SIZE: usize = 16_384;
 const ANNOUNCE_RETRIES: usize = 5;
-const TIMEOUT: Duration = Duration::from_secs_f64(30.0);
 const VERIFY_STORE: bool = true;
+const TIMEOUT: Duration = Duration::from_secs_f64(30.0);
 
 #[derive(Debug)]
 struct Work {
@@ -46,7 +46,7 @@ enum State {
 pub struct Torrent {
 	tracker: TrackerPtr,
 	info: MetaInfo,
-	peers: Vec<Peer>,
+	// peers: Vec<Peer>,
 	pieces: Vec<State>, // Bitfield
 	store: Box<dyn Store>
 }
@@ -149,7 +149,7 @@ impl Session {
 		let torrent = Arc::new(Mutex::new(Torrent {
 			tracker,
 			info: info.clone(),
-			peers: Vec::new(),
+			// peers: Vec::new(),
 			pieces, // Bitfield::new(info.pieces.len())
 			store: Arc::try_unwrap(store).unwrap().into_inner()
 		}));
@@ -232,6 +232,32 @@ impl Session {
 		}
 	}
 
+	// async fn peer_manager(mut peer: Peer) -> (
+	// 	tokio::sync::watch::Receiver<Message>,
+	// 	tokio::sync::mpsc::Sender<Message>
+	// ) {
+	// 	let (receive_tx, receive_rx) = tokio::sync::watch::channel(Message::KeepAlive);
+	// 	let (send_tx, send_rx) = tokio::sync::mpsc::channel(16);
+
+	// 	let peer =
+
+	// 	tokio::spawn(async move {
+	// 		loop {
+	// 			match peer.receive().await {
+	// 				Ok(message) => {
+	// 					receive_tx.send(message).unwrap();
+	// 				},
+	// 				// The connection failed and must be severed.
+	// 				Err(_) => break
+	// 			}
+	// 		}
+	// 	});
+
+	// 	(receive_rx, send_tx)
+	// }
+
+	// async fn peer_seeder(rx: tokio::sync::broadcast::Receiver<>, tx, tokio::sync::mpsc::Sender)
+
 	async fn peer_thread(
 		addr: SocketAddrV4,
 		work_queue: Arc<Mutex<VecDeque<Work>>>,
@@ -270,6 +296,8 @@ impl Session {
 				return;
 			}
 		};
+
+		println!("Connected to peer.");
 
 		// https://github.com/veggiedefender/torrent-client/blob/2bde944888e1195e81cc5d5b686f6ec3a9f08c25/p2p/p2p.go#L133
 

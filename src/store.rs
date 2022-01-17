@@ -10,14 +10,12 @@ pub trait Store: std::fmt::Debug + Send {
 
 #[derive(Debug)]
 pub struct MemoryStore {
-	cursor: u64,
 	data: Vec<u8>
 }
 
 impl MemoryStore {
 	pub fn new(size: usize) -> MemoryStore {
 		MemoryStore {
-			cursor: 0,
 			data: vec![0; size]
 		}
 	}

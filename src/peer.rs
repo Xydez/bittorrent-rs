@@ -7,8 +7,9 @@ use tokio::net::TcpStream;
 
 #[derive(Debug)]
 pub enum PeerError {
-	NetworkError,
+	/// The peer sent an illegal handshake
 	InvalidHandshake,
+	/// The peer wire connection failed. Either an invalid message was sent or the connection stopped working.
 	WireError(WireError)
 }
 
