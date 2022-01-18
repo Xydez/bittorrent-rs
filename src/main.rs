@@ -26,7 +26,7 @@ async fn main() {
 				.read(true)
 				.write(true)
 				.create(true)
-				.open("[Ohys-Raws] Slow Loop - 01 (AT-X 1280x720 x264 AAC JP).mp4")
+				.open("download/[Ohys-Raws] Slow Loop - 01 (AT-X 1280x720 x264 AAC JP).mp4")
 				.unwrap(),
 			size
 		)
