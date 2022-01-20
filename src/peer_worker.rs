@@ -1,8 +1,12 @@
-use std::{time::Duration, sync::Arc, collections::VecDeque};
+use std::{collections::VecDeque, sync::Arc, time::Duration};
 
-use tokio::sync::{Mutex, mpsc::Sender};
+use tokio::sync::{mpsc::Sender, Mutex};
 
-use crate::{session::{Work, TorrentPtr, Event, State}, peer::{Peer, PeerError}, wire::Message};
+use crate::{
+	peer::{Peer, PeerError},
+	session::{Event, State, TorrentPtr, Work},
+	wire::Message
+};
 
 /// An increased block size means an increase in performance, but doesn't work on many clients. 16 KiB is the default.
 const BLOCK_SIZE: usize = 16_384;
@@ -64,7 +68,11 @@ pub(crate) async fn run_worker(
 			if let Some(work) = work {
 				torrent.lock().await.pieces[work.piece] = State::Downloaing;
 
-				println!("Downloading piece {} [{}]", work.piece, crate::util::to_hex(peer.peer_id()));
+				println!(
+					"Downloading piece {} [{}]",
+					work.piece,
+					crate::util::to_hex(peer.peer_id())
+				);
 
 				match get_piece(&mut peer, &work).await {
 					Ok(data) => {
@@ -90,8 +98,17 @@ pub(crate) async fn run_worker(
 						}
 					}
 				}
+			} else if torrent
+				.lock()
+				.await
+				.pieces
+				.iter()
+				.all(|v| v == &State::Done)
+			{
+				// All work is completed and the peer worker should quit.
+				break;
 			} else {
-				// There is no work able to be downloaded by this peer.
+				// There is no work currently able to be downloaded by this peer.
 				// TODO: If it's because there *is* no work, wait 5 seconds. If it's because the peer doesn't have a piece, wait for messages from the peer.
 				tokio::time::sleep(Duration::from_secs_f64(5.0)).await;
 			}

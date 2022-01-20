@@ -1,4 +1,9 @@
-use std::{collections::VecDeque, sync::Arc, time::{Duration}, convert::{TryFrom}};
+use std::{
+	collections::VecDeque,
+	convert::TryFrom,
+	sync::Arc,
+	time::{Duration, Instant}
+};
 
 use sha1::{Digest, Sha1};
 use tokio::{
@@ -11,10 +16,12 @@ use tokio::{
 
 use crate::{
 	metainfo::MetaInfo,
-	peer::{Peer},
+	peer::Peer,
+	peer_worker,
+	// bitfield::Bitfield,
 	store::Store,
 	tracker::{Announce, Tracker},
-	wire::{Handshake}, peer_worker
+	wire::Handshake
 };
 
 pub(crate) type TrackerPtr = Arc<Mutex<Tracker>>;
@@ -50,6 +57,12 @@ pub struct Torrent {
 	pub(crate) store: Box<dyn Store>
 }
 
+impl Torrent {
+	pub fn done(&self) -> bool {
+		self.pieces.iter().all(|p| p == &State::Done)
+	}
+}
+
 pub struct Session {
 	peer_id: [u8; 20],
 	tx: Sender<Event>,
@@ -66,6 +79,9 @@ pub struct Session {
 pub(crate) enum Event {
 	/// Torrent added to the session
 	TorrentAdded(TorrentPtr),
+
+	/// Torrent has finished downloading
+	TorrentDone(TorrentPtr),
 
 	/// Piece(s) added to the work queue
 	PieceAdded,
@@ -96,21 +112,28 @@ impl Session {
 		return session;
 	}
 
-	pub async fn add(&mut self, info: MetaInfo, store: Box<dyn Store>) {
+	pub async fn add(&mut self, info: MetaInfo, store: Box<dyn Store>) -> TorrentPtr {
 		let mut pieces = vec![State::Pending; info.pieces.len()];
 
 		let store = Arc::new(Mutex::new(store));
 
 		if VERIFY_STORE {
-			for (i, v) in verify_store(&info, store.clone()).await.into_iter().enumerate() {
+			let begin = Instant::now();
+
+			for (i, v) in verify_store(&info, store.clone())
+				.await
+				.into_iter()
+				.enumerate()
+			{
 				if v {
 					pieces[i] = State::Done;
 				}
 			}
 
 			println!(
-				"Store verified. {}/{} pieces already done.",
-				pieces.iter().filter(|p| p == &&State::Done).count(),
+				"Store verified in {:.2}s. {}/{} pieces already done.",
+				begin.elapsed().as_secs_f64(),
+				pieces.iter().filter(|&p| p == &State::Done).count(),
 				pieces.len()
 			);
 		}
@@ -129,9 +152,12 @@ impl Session {
 			store: Arc::try_unwrap(store).unwrap().into_inner()
 		}));
 
-		let event = Event::TorrentAdded(torrent);
+		self.tx
+			.send(Event::TorrentAdded(torrent.clone()))
+			.await
+			.expect("Failed to send");
 
-		self.tx.send(event).await.expect("Failed to send");
+		torrent
 	}
 
 	pub async fn poll_events(&mut self) {
@@ -141,9 +167,18 @@ impl Session {
 			Event::TorrentAdded(torrent) => {
 				println!("Event::TorrentAdded {}", torrent.lock().await.info.name);
 
-				self.add_torrent_work(torrent.clone()).await;
-				self.add_torrent_peers(torrent.clone()).await;
+				if torrent.lock().await.done() {
+					self.tx
+						.send(Event::TorrentDone(torrent.clone()))
+						.await
+						.unwrap();
+				} else {
+					// TODO: We should probably skip this until seeding is implemented
+					self.add_torrent_work(torrent.clone()).await;
+					self.add_torrent_peers(torrent.clone()).await;
+				}
 			},
+			Event::TorrentDone(_torrent) => (),
 			Event::PieceAdded => {
 				println!("Event::PieceAdded");
 
@@ -186,8 +221,16 @@ impl Session {
 					.expect("Failed to write to store");
 
 				let pending_count = lock.pieces.iter().filter(|p| p == &&State::Pending).count();
-				let downloading_count = lock.pieces.iter().filter(|p| p == &&State::Downloaing).count();
-				let verifying_count = lock.pieces.iter().filter(|p| p == &&State::Verifying).count();
+				let downloading_count = lock
+					.pieces
+					.iter()
+					.filter(|p| p == &&State::Downloaing)
+					.count();
+				let verifying_count = lock
+					.pieces
+					.iter()
+					.filter(|p| p == &&State::Verifying)
+					.count();
 				let done_count = lock.pieces.iter().filter(|p| p == &&State::Done).count();
 				let total_count = lock.pieces.len();
 
@@ -228,7 +271,13 @@ impl Session {
 
 			loop {
 				if i < ANNOUNCE_RETRIES {
-					let ret = torrent_lock.tracker.lock().await.announce(&announce).await.ok();
+					let ret = torrent_lock
+						.tracker
+						.lock()
+						.await
+						.announce(&announce)
+						.await
+						.ok();
 
 					if ret.is_some() {
 						break ret;
@@ -241,7 +290,8 @@ impl Session {
 
 				i += 1;
 			}
-		}.expect("Failed to announce");
+		}
+		.expect("Failed to announce");
 
 		for addr in announce.peers_addrs {
 			let info = torrent_lock.info.clone();
@@ -252,15 +302,14 @@ impl Session {
 			let torrent = torrent.clone();
 
 			tokio::spawn(async move {
-
-
-				let result = match tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr)).await {
-					Ok(v) => v,
-					Err(_) => {
-						eprintln!("Error: Failed to connect to peer (Connection timed out)");
-						return;
-					}
-				};
+				let result =
+					match tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr)).await {
+						Ok(v) => v,
+						Err(_) => {
+							eprintln!("Error: Failed to connect to peer (Connection timed out)");
+							return;
+						}
+					};
 
 				let stream = match result {
 					Ok(v) => v,
@@ -288,7 +337,13 @@ impl Session {
 					}
 				};
 
-				println!("Connected to peer [{}]", crate::util::to_hex(peer.peer_id()));
+				println!(
+					"Connected to peer [{}]",
+					crate::util::to_hex(peer.peer_id())
+				);
+
+				// Send bitfield?
+				// peer.send(crate::wire::Message::Bitfield(bitfield_from_pieces(&torrent.lock().await.pieces)));
 
 				peer_worker::run_worker(peer, work_queue, torrent, tx).await;
 			});
@@ -299,6 +354,11 @@ impl Session {
 		println!("Adding work for torrent...");
 
 		let torrent_lock = torrent.lock().await;
+
+		// If there is no work to be done, return.
+		if !torrent_lock.pieces.iter().any(|p| p == &State::Pending) {
+			return;
+		}
 
 		// Add work.
 		// TODO: Right now it's added in order, but we should probably either randomize the work or have a rarest-first system instead.
@@ -327,47 +387,52 @@ fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
 async fn verify_store(info: &MetaInfo, store: Arc<Mutex<Box<dyn Store>>>) -> Vec<bool> {
 	let pieces = Arc::new(std::sync::Mutex::new(vec![false; info.pieces.len()]));
 
-	let iter = Arc::new(std::sync::Mutex::new(info.pieces.clone().into_iter().enumerate()));
-	
+	let iter = Arc::new(std::sync::Mutex::new(
+		info.pieces.clone().into_iter().enumerate()
+	));
+
 	let threads = (num_cpus::get() - 1).max(1);
 
 	println!("Verifying store using {} threads...", threads);
-		
-	let handles = (0..threads).map(|_i| {
-		let info = info.clone();
-		let iter = iter.clone();
-		let store = store.clone();
-		let pieces = pieces.clone();
 
-		std::thread::spawn(move || {
-			let mut v;
+	let handles = (0..threads)
+		.map(|_i| {
+			let info = info.clone();
+			let iter = iter.clone();
+			let store = store.clone();
+			let pieces = pieces.clone();
 
-			loop {
-				v = iter.lock().unwrap().next();
+			std::thread::spawn(move || {
+				let mut v;
 
-				if v == None {
-					break;
+				loop {
+					v = iter.lock().unwrap().next();
+
+					if v == None {
+						break;
+					}
+
+					let (i, hash) = v.unwrap();
+
+					let data = store
+						.blocking_lock()
+						.get(
+							i * info.piece_size,
+							if i == info.pieces.len() - 1 {
+								info.last_piece_size
+							} else {
+								info.piece_size
+							}
+						)
+						.expect("Failed to get data from store");
+
+					if verify_piece(&data, &hash) {
+						pieces.lock().unwrap()[i] = true;
+					}
 				}
-
-				let (i, hash) = v.unwrap();
-
-				let data = store.blocking_lock()
-					.get(
-						i * info.piece_size,
-						if i == info.pieces.len() - 1 {
-							info.last_piece_size
-						} else {
-							info.piece_size
-						}
-					)
-					.expect("Failed to get data from store");
-				
-				if verify_piece(&data, &hash) {
-					pieces.lock().unwrap()[i] = true;
-				}
-			}
+			})
 		})
-	}).collect::<Vec<_>>();
+		.collect::<Vec<_>>();
 
 	for handle in handles {
 		handle.join().unwrap();
@@ -375,3 +440,18 @@ async fn verify_store(info: &MetaInfo, store: Arc<Mutex<Box<dyn Store>>>) -> Vec
 
 	Arc::try_unwrap(pieces).unwrap().into_inner().unwrap()
 }
+
+/*
+fn bitfield_from_pieces(pieces: &Vec<State>) -> Bitfield {
+	Bitfield::from_bytes(&pieces
+		.chunks(8)
+		.map(|s|
+			s.iter()
+				.enumerate()
+				// TODO: Maybe it's not `1 << i` but `1 << (7 - i)`
+				.fold(0u8, |acc, (i, v)| if v == &State::Done { acc + (1 << (7 - i)) } else { acc })
+		)
+		.collect::<Vec<u8>>()
+	)
+}
+*/

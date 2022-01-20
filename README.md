@@ -5,9 +5,7 @@ See:
 * [Inofficial BitTorrent specification](https://wiki.theory.org/index.php/BitTorrentSpecification)
 
 ## todo
-* (WIP) Add parallel requests (Increases download speed tremendously)
-* (WIP) Store piece status as an enum instead of a bitfield, update the enum's state when downloading
-  * Needs `as_bitfield()` method later if we want to support seeding
+* Use Weak ref instead of Arc in the peer threads to shut down correctly.
 * Use two threads and a channel for receiving pieces instead of crashing if we receive a message we didn't expect. Also clean up code.
 * See https://blog.jse.li/posts/torrent/
 * See https://en.wikipedia.org/wiki/Torrent_file
@@ -30,8 +28,6 @@ peer.on<peer::Event::Handshake>(|event: HandshakeEvent| {
 * what is a duplex stream?
 * rust duplex streams
 
-
-
 -- Sidenote: live transcoding later --
 
 * https://blog.webtor.io/en/post/technologies-inside-webtor.io/
@@ -48,11 +44,5 @@ note:
 see:
 * https://www.bittorrent.org/beps/bep_0009.html
 * https://www.bittorrent.org/beps/bep_0010.html
-
-
-# TODO: The last piece is shorter, must optimize for that
-# ^ Bug: Results in the last piece getting stuck because its locks in receiving
-
-
 
 // TODO: We should wait until a torrent added message or something like that in the peer threads instead of sleeping

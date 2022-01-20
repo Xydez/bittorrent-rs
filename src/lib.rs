@@ -1,9 +1,10 @@
 #![feature(duration_consts_float)]
+#![feature(int_log)]
 
 pub mod bitfield;
 pub mod metainfo;
-pub(crate) mod peer_worker;
 pub mod peer;
+pub(crate) mod peer_worker;
 pub mod session;
 pub mod store;
 pub mod tracker;

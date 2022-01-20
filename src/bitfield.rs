@@ -30,16 +30,18 @@ impl Bitfield {
 	}
 
 	/// Get a bit from the bitfield
+	/// TODO: Maybe it's not at byte offset `(i % 8)` but `(7 - (i % 8))`
 	pub fn get(&self, i: usize) -> bool {
-		self.data[i / 8] & (1 << i % 8) != 0
+		self.data[i / 8] & (1 << (7 - (i % 8))) != 0
 	}
 
 	/// Set a bit in the bitfield
+	/// TODO: Maybe it's not at byte offset `(i % 8)` but `(7 - (i % 8))`
 	pub fn set(&mut self, i: usize, value: bool) {
 		if value {
-			self.data[i / 8] = self.data[i / 8] | (1 << i % 8);
+			self.data[i / 8] = self.data[i / 8] | (1 << (7 - (i % 8)));
 		} else {
-			self.data[i / 8] = self.data[i / 8] & (0b11111111 ^ (1 << i % 8));
+			self.data[i / 8] = self.data[i / 8] & (0b11111111 ^ (1 << (7 - (i % 8))));
 		}
 	}
 }

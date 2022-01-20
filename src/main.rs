@@ -6,8 +6,7 @@ use bittorrent::{metainfo::MetaInfo, session::Session, store::SingleFileStore};
 async fn main() {
 	let mut session = Session::new(['x' as u8; 20]);
 
-	let meta = MetaInfo::load("[Ohys-Raws] Slow Loop - 01 (AT-X 1280x720 x264 AAC JP).mp4.torrent")
-		.unwrap();
+	let meta = MetaInfo::load("debian-10.10.0-amd64-DVD-1.iso.torrent").unwrap();
 	println!("== {} ==", meta.name);
 	println!("{:<16}{}", "tracker", meta.announce);
 	println!("{:<16}{}", "pieces", meta.pieces.len());
@@ -26,16 +25,19 @@ async fn main() {
 				.read(true)
 				.write(true)
 				.create(true)
-				.open("download/[Ohys-Raws] Slow Loop - 01 (AT-X 1280x720 x264 AAC JP).mp4")
+				.open("download/debian-10.10.0-amd64-DVD-1.iso")
 				.unwrap(),
 			size
 		)
 		.unwrap()
 	);
 
-	session.add(meta.clone(), store).await;
+	let torrent = session.add(meta.clone(), store).await;
 
-	loop {
+	// Exit when the torrent is done.
+	while !torrent.lock().await.done() {
 		session.poll_events().await;
 	}
+
+	println!("Torrent has finished downloading.");
 }
