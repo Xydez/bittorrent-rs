@@ -2,6 +2,7 @@
 pub struct Piece {
     pub priority: Priority,
     pub state: State,
+    pub availability: usize
 }
 
 /// How peer workers should prioritize downloading the piece. Pieces are selected using the current selecting algorithm

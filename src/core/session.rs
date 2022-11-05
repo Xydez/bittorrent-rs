@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use rand::Rng;
+use rand::{Rng, seq::SliceRandom};
 use sha1::{Digest, Sha1};
+use tap::Tap;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::{
@@ -45,6 +46,16 @@ pub struct Torrent {
     pub pieces: Vec<Piece>,              // TODO: Should probably be Vec<Mutex<Piece>> instead
     pub store: Arc<Mutex<Box<dyn Store>>>,
     pub tracker: Tracker,
+}
+
+impl Torrent {
+    /// Calculate the number of completed pieces (piece.state >= State::Verified)
+    pub fn completed_pieces(&self) -> usize {
+        self.pieces
+            .iter()
+            .filter(|piece| piece.state >= piece::State::Verified)
+            .count()
+    }
 }
 
 // TODO:
@@ -91,7 +102,8 @@ impl<'a> Session<'a> {
         let pieces = vec![
             Piece {
                 priority: piece::Priority::Normal,
-                state: piece::State::Pending
+                state: piece::State::Pending,
+                availability: 0
             };
             meta_info.pieces.len()
         ];
@@ -235,6 +247,7 @@ impl<'a> Session<'a> {
                                     }
                                 };
 
+                                // Create a bitfield of our pieces
                                 let bitfield = Bitfield::from_bytes(
                                     &torrent
                                         .lock()
@@ -245,7 +258,7 @@ impl<'a> Session<'a> {
                                             pieces.iter().enumerate().fold(
                                                 0u8,
                                                 |acc, (i, piece)| {
-                                                    if piece.state == piece::State::Done {
+                                                    if piece.state == piece::State::Done { // TODO: >= piece::State::Verified
                                                         acc + (1 << (7 - i))
                                                     } else {
                                                         acc
@@ -262,6 +275,7 @@ impl<'a> Session<'a> {
                                 // torrent.lock().await.peers.push(peer.clone());
                                 // peer_worker::run_worker(peer, torrent, tx).await;
 
+                                /*
                                 {
                                     let mut lock = torrent.lock().await;
                                     let worker = peer_worker::Worker::spawn(
@@ -270,6 +284,17 @@ impl<'a> Session<'a> {
                                         tx,
                                     );
                                     lock.peers.push(worker);
+                                }
+                                */
+
+                                {
+                                    let peer = Arc::new(Mutex::new(peer));
+                                    let (state_tx, state_rx) = tokio::sync::watch::channel(peer_worker::State::Idle);
+                                    torrent.lock().await.peers.push(peer_worker::Worker {
+                                        peer: peer.clone(),
+                                        state_tx
+                                    });
+                                    peer_worker::run_worker(peer, torrent.clone(), tx, state_rx).await.unwrap();
                                 }
                             });
                         }
@@ -367,17 +392,33 @@ impl<'a> Session<'a> {
     // https://www.researchgate.net/publication/223808116_Implementation_and_analysis_of_the_BitTorrent_protocol_with_a_multi-agent_model
     // https://www.researchgate.net/figure/Implementation-of-the-choking-algorithm_fig3_223808116
     fn select_piece(torrent: &Torrent, worker: &peer_worker::Worker) {
-        // The peer will initially use a "random first piece" algorithm until it has four complete pieces
-        if torrent
-            .pieces
-            .iter()
-            .all(|piece| piece.state >= piece::State::Verified)
-        {
-            let piece_i = rand::thread_rng().gen_range(0..torrent.pieces.len());
+        let pending_pieces = torrent.pieces.iter()
+            .enumerate()
+            .filter(|(i, piece)| piece.state == piece::State::Pending)
+            .collect::<Vec<_>>();
+
+
+        if torrent.completed_pieces() < 4 {
+            // The peer will initially use a "random first piece" algorithm until it has four complete pieces
+
+            let piece_i = pending_pieces
+                .choose(&mut rand::thread_rng())
+                .map(|(i, _)| *i)
+                .unwrap();
+
+            //let piece_i = rand::thread_rng().gen_range(0..pending_pieces.len());
+            worker.set_state(peer_worker::State::Download(piece_i));
+        } else {
+            // When a peer gets at least four pieces, it switches the algorithm to "rarest piece first".
+            // The policy is determining the rarest pieces in the own peer set and download those ﬁrst, so the peer will have more unusual pieces, which will be helpful in the trade with other peers.
+            let piece_i = pending_pieces
+                .tap_mut(|pieces| pieces.sort_by_key(|(i, piece)| piece.availability))
+                .choose(&mut rand::thread_rng())
+                .map(|(i, _)| *i)
+                .unwrap();
+            
             worker.set_state(peer_worker::State::Download(piece_i));
         }
-        // When a peer gets at least four pieces, it switches the algorithm to "rarest piece first".
-        // The policy is determining the rarest pieces in the own peer set and download those ﬁrst, so the peer will have more unusual pieces, which will be helpful in the trade with other peers.
 
         todo!("Not done")
     }

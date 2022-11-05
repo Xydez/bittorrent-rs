@@ -64,10 +64,8 @@ pub enum State {
 
 #[derive(Debug)]
 pub struct Worker {
-    peer: PeerPtr,
-    // pub state: Arc<Mutex<State>>,
+    pub peer: PeerPtr,
     pub state_tx: tokio::sync::watch::Sender<State>,
-    process: tokio::task::JoinHandle<Result<(), ()>>, // TODO: WorkerError
 }
 
 impl Worker {
@@ -77,14 +75,13 @@ impl Worker {
 
         let worker_peer = peer.clone();
 
-        let process =
-            tokio::spawn(async move { run_worker(worker_peer, torrent, tx, state_rx).await });
+        //let process =
+//            tokio::spawn(async move { run_worker(worker_peer, torrent, tx, state_rx).await });
 
         Worker {
             peer,
             // state,
             state_tx,
-            process,
         }
     }
 
@@ -96,12 +93,12 @@ impl Worker {
         self.state_tx.send(state).unwrap();
     }
 
-    pub async fn join(self) -> Result<(), ()> {
+    /*pub async fn join(self) -> Result<(), ()> {
         self.process.await.expect("Failed to join worker")
-    }
+    }*/
 }
 
-async fn run_worker(
+pub async fn run_worker(
     peer: PeerPtr,
     torrent: TorrentPtr,
     tx: EventSender,
@@ -123,11 +120,25 @@ async fn run_worker(
             State::Download(piece) => {
                 // 1. Wait until we are unchoked
                 if peer.lock().await.peer_choking() {
-                    peer.lock()
+                    let message = peer.lock()
                         .await
                         .receive()
                         .await
                         .expect("Failed to receive message (while waiting for unchoke)");
+
+                    if let Message::Bitfield(bitfield) = message {
+                        let pieces = bitfield.iter()
+                            .enumerate()
+                            .filter(|(i, b)| *b)
+                            .map(|(i, b)| i)
+                            .collect::<Vec<usize>>();
+
+                        let mut torrent = torrent.lock().await;
+
+                        for piece in pieces {
+                            torrent.pieces[piece].availability += 1;
+                        }
+                    }
                 }
 
                 // 2. Select a piece to download

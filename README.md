@@ -44,3 +44,8 @@ TODO: Basically what we need to do is create a new `Peer` struct that can send a
 // TODO: generic `StoreWriter` to write to the store more efficiently
 
 // TODO: How do we weave sending and receiving messages to the peer effectively?
+// ^ RE: We don't
+
+
+1. Make sure all Worker in session.peers are alive
+2. Make sure piece.availability is updated
