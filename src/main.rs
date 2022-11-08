@@ -8,7 +8,7 @@ use bittorrent::{
     protocol::metainfo::MetaInfo,
 };
 
-const TORRENT: &str = "[SubsPlease] Yofukashi no Uta - 12 (1080p) [6529938D].mkv.torrent";
+const TORRENT: &str = "torrents/[SubsPlease] Yofukashi no Uta - 12 (1080p) [6529938D].mkv.torrent";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
