@@ -3,6 +3,8 @@ use crate::{
     protocol::wire::{Handshake, Message, Wire, WireError},
 };
 
+use super::{session::PieceID, util};
+
 #[derive(Debug)]
 pub enum PeerError {
     /// The peer sent an illegal handshake
@@ -125,6 +127,10 @@ impl Peer {
         &self.peer_id
     }
 
+    pub fn peer_id_short(&self) -> String {
+        util::hex(&self.peer_id[16..20])
+    }
+
     pub fn extensions(&self) -> &[u8; 8] {
         &self.extensions
     }
@@ -145,9 +151,9 @@ impl Peer {
         self.peer_interested
     }
 
-    pub fn has_piece(&self, i: usize) -> bool {
+    pub fn has_piece(&self, i: PieceID) -> bool {
         // If we haven't received a bitfield, it means the peer has no pieces yet
-        self.peer_pieces.as_ref().map(|v| v.get(i)).unwrap_or(false)
+        self.peer_pieces.as_ref().map(|v| v.get(i as usize)).unwrap_or(false)
     }
 }
 

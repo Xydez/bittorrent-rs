@@ -1,8 +1,6 @@
-use std::sync::Arc;
+use std::{sync::Arc};
 
-use rand::{Rng, seq::SliceRandom};
 use sha1::{Digest, Sha1};
-use tap::Tap;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::{
@@ -10,7 +8,7 @@ use crate::{
     io::store::Store,
     protocol::{
         metainfo::MetaInfo,
-        tracker::{Announce, Tracker},
+        tracker::Announce,
         wire,
     },
 };
@@ -18,14 +16,25 @@ use crate::{
 use super::{
     bitfield::Bitfield,
     event::{PieceEvent, TorrentEvent},
-    peer_worker,
-    piece::{self, Piece},
+    peer_worker::{self, Mode},
+    piece,
+    torrent::Torrent,
 };
-
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f64(10.0);
 
 pub(crate) type TorrentPtr = Arc<Mutex<Torrent>>;
 pub(crate) type PeerPtr = Arc<Mutex<Peer>>;
+
+/// Timeout when attempting to connect to a peer
+pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f64(8.0);
+
+/// Sever the connection if the peer doesn't send a message within this duration. This amount of time is generally 2 minutes.
+pub const ALIVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f64(120.0);
+
+/// Size of a block. 16 KiB is the maximum permitted by the spec.
+pub const BLOCK_SIZE: u32 = 16_384;
+
+/// The maximum amount of concurrent requests that can be sent to a peer
+pub const BLOCK_CONCURRENT_REQUESTS: usize = 5;
 
 // TODO:
 // Rewrite `peer_worker.rs`
@@ -38,37 +47,14 @@ pub(crate) type PeerPtr = Arc<Mutex<Peer>>;
 //      - Add a new `Settings` struct that contains the aforementioned flag.
 //          - Maybe also add a builder.
 
-#[derive(Debug)]
-pub struct Torrent {
-    // TODO: Implement multiple trackers
-    pub meta_info: MetaInfo,
-    pub peers: Vec<peer_worker::Worker>, // TODO: PeerWorker // PeerPtr
-    pub pieces: Vec<Piece>,              // TODO: Should probably be Vec<Mutex<Piece>> instead
-    pub store: Arc<Mutex<Box<dyn Store>>>,
-    pub tracker: Tracker,
-}
-
-impl Torrent {
-    /// Calculate the number of completed pieces (piece.state >= State::Verified)
-    pub fn completed_pieces(&self) -> usize {
-        self.pieces
-            .iter()
-            .filter(|piece| piece.state >= piece::State::Verified)
-            .count()
-    }
-}
-
 // TODO:
 // Just copy over things from the old client, we want almost everything except the work queue which should be replaced by the new peer and verification workers. Also we didn't used to join the old peer worker, which was pretty damn stupid.
 
 pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
 pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
+pub type PieceID = u32;
 
 pub trait EventCallback = Fn(&Session, &Event);
-
-fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
-    hash == &<[u8; 20]>::try_from(Sha1::digest(piece).as_slice()).unwrap()
-}
 
 pub struct Session<'a> {
     pub peer_id: [u8; 20],
@@ -81,6 +67,7 @@ pub struct Session<'a> {
 }
 
 impl<'a> Session<'a> {
+    /// Constructs a new session with the specified peer id
     pub fn new(peer_id: [u8; 20]) -> Session<'a> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -94,29 +81,14 @@ impl<'a> Session<'a> {
         }
     }
 
+    /// Adds an event listener to the session
     pub fn add_listener<F: EventCallback + 'a>(&mut self, listener: F) {
         self.listeners.push(Box::new(listener));
     }
 
+    /// Adds a torrent to the session
     pub fn add(&mut self, meta_info: MetaInfo, store: Box<dyn Store>) {
-        let pieces = vec![
-            Piece {
-                priority: piece::Priority::Normal,
-                state: piece::State::Pending,
-                availability: 0
-            };
-            meta_info.pieces.len()
-        ];
-
-        let tracker = Tracker::new(&meta_info.announce);
-
-        let torrent = Arc::new(Mutex::new(Torrent {
-            meta_info,
-            peers: Vec::new(),
-            pieces,
-            store: Arc::new(Mutex::new(store)),
-            tracker,
-        }));
+        let torrent = Arc::new(Mutex::new(Torrent::new(meta_info, store)));
 
         self.torrents.push(torrent.clone());
 
@@ -125,65 +97,7 @@ impl<'a> Session<'a> {
             .expect("Cannot add torrent because channel is closed");
     }
 
-    async fn try_announce(tx: EventSender, peer_id: [u8; 20], torrent: TorrentPtr) {
-        let mut torrent_lock = torrent.lock().await;
-
-        let response = {
-            let mut i = 0;
-
-            let announce = Announce {
-                info_hash: torrent_lock.meta_info.info_hash,
-                peer_id,
-                ip: None,
-                port: 8000,
-                uploaded: 0,
-                downloaded: 0,
-                left: 0,
-                event: None, // TODO: Should probably be started on the first announce
-            };
-
-            loop {
-                const ANNOUNCE_RETRIES: i32 = 5;
-
-                if i < ANNOUNCE_RETRIES {
-                    log::trace!(
-                        "Announcing to tracker \"{}\"",
-                        torrent_lock.tracker.announce_url()
-                    );
-
-                    let response = torrent_lock.tracker.announce(&announce).await;
-
-                    match response {
-                        Ok(response) => break Some(response),
-                        Err(error) => log::error!("Failed to announce: {}", error),
-                    }
-                } else {
-                    break None;
-                }
-
-                i += 1;
-            }
-        };
-
-        // Find peers for the torrent
-        // TODO: function in peer_worker
-
-        if let Some(response) = response {
-            // for addr in announce.peers_addrs {}
-            drop(torrent_lock);
-            tx.send(Event::TorrentEvent(
-                torrent,
-                TorrentEvent::Announced(response),
-            ))
-            .unwrap();
-        } else {
-            log::error!(
-                "Torrent {} failed to announce",
-                util::hex(&torrent_lock.meta_info.info_hash)
-            );
-        }
-    }
-
+    /// Starts the event loop of the session
     pub async fn start(&mut self) {
         while let Some(event) = self.rx.recv().await {
             match &event {
@@ -194,7 +108,7 @@ impl<'a> Session<'a> {
                             util::hex(&torrent.lock().await.meta_info.info_hash)
                         );
 
-                        tokio::spawn(Session::try_announce(
+                        tokio::spawn(try_announce(
                             self.tx.clone(),
                             self.peer_id,
                             torrent.clone(),
@@ -288,6 +202,8 @@ impl<'a> Session<'a> {
                                 */
 
                                 {
+                                    // TODO:
+                                    /*
                                     let peer = Arc::new(Mutex::new(peer));
                                     let (state_tx, state_rx) = tokio::sync::watch::channel(peer_worker::State::Idle);
                                     torrent.lock().await.peers.push(peer_worker::Worker {
@@ -295,21 +211,44 @@ impl<'a> Session<'a> {
                                         state_tx
                                     });
                                     peer_worker::run_worker(peer, torrent.clone(), tx, state_rx).await.unwrap();
+                                    */
+
+                                    let peer = Arc::new(Mutex::new(peer));
+                                    let (mode_tx, mode_rx) = tokio::sync::watch::channel(
+                                        Mode {
+                                            download: true,
+                                            seed: false
+                                        }
+                                    );
+
+                                    let task = peer_worker::start_worker(torrent.clone(), peer.clone(), tx, mode_rx);
+
+                                    torrent.lock().await.peers.push(peer_worker::Worker {
+                                        mode_tx,
+                                        peer,
+                                        task 
+                                    });
                                 }
                             });
                         }
 
                         // (not yet sure about this)
                         // 2. Iterate over all peers and select which ones to download from and which ones to seed to
+                        /*
                         {
                             let lock = torrent.lock().await;
 
                             for worker in &lock.peers {
-                                Self::select_piece(&lock, worker);
+                                //let piece = Torre§
+
+                                //Self::select_piece(&lock, worker);
+                                todo!("Probably just do this in peer_worker instead")
                             }
                         }
+                        */
                     }
                     TorrentEvent::PieceEvent(piece, event) => match &event {
+                        PieceEvent::Block(_) => (),
                         PieceEvent::Downloaded(data) => {
                             // TODO: Spawn a thread that verifies the data
                             let semaphore = self.verification_semaphore.clone();
@@ -320,15 +259,15 @@ impl<'a> Session<'a> {
 
                             tokio::spawn(async move {
                                 let _permit = semaphore.acquire_owned().await.unwrap();
-                                torrent.lock().await.pieces[piece].state = piece::State::Verifying;
+                                torrent.lock().await.pieces[piece as usize].state = piece::State::Verifying;
 
-                                let hash = torrent.lock().await.meta_info.pieces[piece];
+                                let hash = torrent.lock().await.meta_info.pieces[piece as usize];
                                 let intact = verify_piece(&data, &hash);
 
-                                torrent.lock().await.pieces[piece].state = if intact {
+                                torrent.lock().await.pieces[piece as usize].state = if intact {
                                     piece::State::Verified
                                 } else {
-                                    piece::State::Pending
+                                    piece::State::Pending // TODO: If we use Block we also need to reset the block state
                                 };
 
                                 if intact {
@@ -356,10 +295,10 @@ impl<'a> Session<'a> {
                                 store
                                     .lock()
                                     .await
-                                    .set(piece * piece_size, &data)
+                                    .set(piece as usize * piece_size, &data)
                                     .expect("Failed to write to store");
 
-                                torrent.lock().await.pieces[piece].state = piece::State::Done;
+                                torrent.lock().await.pieces[piece as usize].state = piece::State::Done;
                                 tx.send(Event::TorrentEvent(
                                     torrent,
                                     TorrentEvent::PieceEvent(piece, PieceEvent::Done),
@@ -383,43 +322,87 @@ impl<'a> Session<'a> {
         }
     }
 
+    /// Stops the session
     pub fn shutdown(&self) {
         self.tx.send(Event::Shutdown).unwrap();
         // TODO: We should make this async and join all handlers and stuff
+        // TODO: Check if we are even running (if the event loop is running)
+        // TODO: `&self` should maybe be `&mut self`?
     }
 
-    // 3.2.5
-    // https://www.researchgate.net/publication/223808116_Implementation_and_analysis_of_the_BitTorrent_protocol_with_a_multi-agent_model
-    // https://www.researchgate.net/figure/Implementation-of-the-choking-algorithm_fig3_223808116
-    fn select_piece(torrent: &Torrent, worker: &peer_worker::Worker) {
-        let pending_pieces = torrent.pieces.iter()
-            .enumerate()
-            .filter(|(i, piece)| piece.state == piece::State::Pending)
-            .collect::<Vec<_>>();
+    
+}
 
+/// Announces a torrent
+async fn try_announce(tx: EventSender, peer_id: [u8; 20], torrent: TorrentPtr) {
+    let mut torrent_lock = torrent.lock().await;
 
-        if torrent.completed_pieces() < 4 {
-            // The peer will initially use a "random first piece" algorithm until it has four complete pieces
+    let response = {
+        let mut i = 0;
 
-            let piece_i = pending_pieces
-                .choose(&mut rand::thread_rng())
-                .map(|(i, _)| *i)
-                .unwrap();
+        let announce = Announce {
+            info_hash: torrent_lock.meta_info.info_hash,
+            peer_id,
+            ip: None,
+            port: 8000,
+            uploaded: 0,
+            downloaded: 0,
+            left: 0,
+            event: None, // TODO: Should probably be started on the first announce
+        };
 
-            //let piece_i = rand::thread_rng().gen_range(0..pending_pieces.len());
-            worker.set_state(peer_worker::State::Download(piece_i));
-        } else {
-            // When a peer gets at least four pieces, it switches the algorithm to "rarest piece first".
-            // The policy is determining the rarest pieces in the own peer set and download those ﬁrst, so the peer will have more unusual pieces, which will be helpful in the trade with other peers.
-            let piece_i = pending_pieces
-                .tap_mut(|pieces| pieces.sort_by_key(|(i, piece)| piece.availability))
-                .choose(&mut rand::thread_rng())
-                .map(|(i, _)| *i)
-                .unwrap();
-            
-            worker.set_state(peer_worker::State::Download(piece_i));
+        loop {
+            const ANNOUNCE_RETRIES: i32 = 5;
+
+            if i < ANNOUNCE_RETRIES {
+                log::trace!(
+                    "Announcing to tracker \"{}\"",
+                    torrent_lock.tracker.announce_url()
+                );
+
+                let response = torrent_lock.tracker.announce(&announce).await;
+
+                match response {
+                    Ok(response) => break Some(response),
+                    Err(error) => log::error!("Failed to announce: {}", error),
+                }
+            } else {
+                break None;
+            }
+
+            i += 1;
         }
+    };
 
-        todo!("Not done")
+    // Find peers for the torrent
+    // TODO: function in peer_worker
+
+    if let Some(response) = response {
+        // for addr in announce.peers_addrs {}
+        drop(torrent_lock);
+        tx.send(Event::TorrentEvent(
+            torrent,
+            TorrentEvent::Announced(response),
+        ))
+        .unwrap();
+    } else {
+        log::error!(
+            "Torrent {} failed to announce",
+            util::hex(&torrent_lock.meta_info.info_hash)
+        );
     }
+}
+
+/// Calculates the size of a piece using the [`MetaInfo`]
+pub(crate) fn piece_size(piece: PieceID, meta_info: &MetaInfo) -> usize {
+    if piece as usize == meta_info.pieces.len() - 1 {
+        meta_info.last_piece_size
+    } else {
+        meta_info.piece_size
+    }
+}
+
+/// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
+fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
+    hash == &<[u8; 20]>::try_from(Sha1::digest(piece).as_slice()).unwrap()
 }

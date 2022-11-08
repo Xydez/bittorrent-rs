@@ -4,11 +4,9 @@ use bittorrent::{
         piece::State,
         session::Session,
     },
-    io::store::SingleFileStore,
+    io::store::NullStore,
     protocol::metainfo::MetaInfo,
 };
-
-use std::fs::File;
 
 const TORRENT: &str = "[SubsPlease] Yofukashi no Uta - 12 (1080p) [6529938D].mkv.torrent";
 
@@ -62,8 +60,9 @@ async fn main() {
     });
 
     let meta_info = MetaInfo::load(TORRENT).unwrap();
+    /*
     let file_info = meta_info.files.first().unwrap();
-    let store = SingleFileStore::new(
+    let store = FileStore::new(
         File::create(format!(
             "./downloads/{}",
             file_info.path.as_os_str().to_str().unwrap()
@@ -72,6 +71,8 @@ async fn main() {
         file_info.length,
     )
     .unwrap();
+    */
+    let store = NullStore;
 
     session.add(meta_info, Box::new(store));
 

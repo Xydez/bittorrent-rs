@@ -192,7 +192,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    #[cfg_attr(not(feature = "network-tests"), ignore)]
+    #[cfg_attr(not(feature = "net-tests"), ignore)]
     async fn test_announce() {
         let mut tracker = Tracker::new("http://bttracker.debian.org:6969/announce");
 
@@ -203,7 +203,7 @@ mod tests {
         tracker
             .announce(&Announce {
                 info_hash,
-                peer_id: [120; 20],
+                peer_id: [0xff; 20],
                 ip: None,
                 port: 8000,
                 uploaded: 0,

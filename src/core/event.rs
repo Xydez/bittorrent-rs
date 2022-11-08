@@ -4,7 +4,7 @@ use strum::AsRefStr;
 
 use crate::protocol::tracker;
 
-use super::session::TorrentPtr;
+use super::session::{TorrentPtr, PieceID};
 
 // TODO: Make `Event` print properly
 
@@ -27,12 +27,14 @@ pub enum TorrentEvent {
     /// Torrent has been announced to the tracker
     Announced(tracker::Response),
     /// Event for a piece in the torrent
-    PieceEvent(usize, PieceEvent),
+    PieceEvent(PieceID, PieceEvent),
 }
 
 /// Events for individual pieces of a torrent
 #[derive(Debug, AsRefStr)]
 pub enum PieceEvent {
+    Block(usize),
+
     /// Piece has been downloaded
     Downloaded(Arc<Vec<u8>>),
 
