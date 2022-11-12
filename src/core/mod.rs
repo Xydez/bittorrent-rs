@@ -1,11 +1,10 @@
 pub mod algorithm;
 pub mod bitfield;
+pub mod block;
 pub mod event;
-// pub mod peer_id;
 pub mod peer;
-// pub mod peer_new;
-pub mod peer_worker;
 pub mod piece;
 pub mod session;
 pub mod torrent;
 pub mod util;
+pub mod worker;

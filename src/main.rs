@@ -4,17 +4,17 @@ use bittorrent::{
         piece::State,
         session::Session,
     },
-    io::store::NullStore,
+    io::store::FileStore,
     protocol::metainfo::MetaInfo,
 };
 
-const TORRENT: &str = "torrents/[SubsPlease] Yofukashi no Uta - 12 (1080p) [6529938D].mkv.torrent";
+const TORRENT: &str = "torrents/debian-10.10.0-amd64-DVD-1.iso.torrent";
+//const TORRENT: &str = "torrents/[SubsPlease] Yofukashi no Uta - 12 (1080p) [6529938D].mkv.torrent";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     pretty_env_logger::init();
 
-    // TODO: Maybe we can swap out rx for a class with `pub(crate) rx: EventReceiver` so the user can't use rx
     let mut session = Session::new([b'x'; 20]);
 
     session.add_listener(|session: &Session, event: &Event| {
@@ -46,7 +46,7 @@ async fn main() {
                         (pending, downloading, done)
                     };
 
-                    log::debug!(
+                    log::info!(
                         "{:>4} PENDING | {:>4} DOWNLOADING | {:>4} DONE",
                         pending,
                         downloading,
@@ -60,19 +60,16 @@ async fn main() {
     });
 
     let meta_info = MetaInfo::load(TORRENT).unwrap();
-    /*
-    let file_info = meta_info.files.first().unwrap();
+
+    std::fs::create_dir_all("./downloads/").unwrap();
     let store = FileStore::new(
-        File::create(format!(
-            "./downloads/{}",
-            file_info.path.as_os_str().to_str().unwrap()
-        ))
-        .unwrap(),
-        file_info.length,
+        meta_info.piece_size,
+        meta_info.files
+            .iter()
+            .map(|file| (file.length, std::path::Path::new("./downloads/").join(&file.path)))
+            .collect::<Vec<_>>()
     )
     .unwrap();
-    */
-    let store = NullStore;
 
     session.add(meta_info, Box::new(store));
 

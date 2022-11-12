@@ -1,51 +1,16 @@
-use std::convert::TryInto;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-};
+use thiserror::Error;
 
 use crate::core::bitfield::Bitfield;
 
-const PROTOCOL: &str = "BitTorrent protocol";
-
-#[derive(Debug)]
-pub enum WireError {
-    NetworkError(std::io::Error),
-    InvalidHandshakeError,
-    InvalidMessageError(String),
+#[derive(Error, Debug)]
+pub enum MessageError {
+    #[error("Message ids must be between 0-8 (Got {0})")]
+    InvalidID(u8),
+    #[error("Invalid payload length")]
+    InvalidPayload
 }
 
-impl From<std::io::Error> for WireError {
-    fn from(error: std::io::Error) -> Self {
-        WireError::NetworkError(error)
-    }
-}
-
-impl std::fmt::Display for WireError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            WireError::NetworkError(error) => write!(f, "Network error: {}", error),
-            WireError::InvalidHandshakeError => write!(f, "Invalid handshake"),
-            WireError::InvalidMessageError(description) => {
-                write!(f, "Invalid message. {}", description)
-            }
-        }
-    }
-}
-
-// impl std::error::Error for WireError {
-// 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-// 		todo!()
-// 	}
-// }
-
-pub(crate) type Result<T> = std::result::Result<T, WireError>;
-
-pub struct Handshake {
-    pub extensions: [u8; 8],
-    pub info_hash: [u8; 20],
-    pub peer_id: [u8; 20],
-}
+pub(crate) type Result<T> = std::result::Result<T, MessageError>;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -109,7 +74,7 @@ impl Message {
 }
 
 impl TryFrom<&[u8]> for Message {
-    type Error = WireError;
+    type Error = MessageError;
 
     fn try_from(buffer: &[u8]) -> Result<Self> {
         // Messages of length zero are keepalives, and ignored. Keepalives are generally sent once every two minutes, but note that timeouts can be done much more quickly when data is expected.
@@ -129,20 +94,15 @@ impl TryFrom<&[u8]> for Message {
                         1 => Ok(Message::Unchoke),
                         2 => Ok(Message::Interested),
                         3 => Ok(Message::NotInterested),
-                        _ => unreachable!(),
+                        _ => unreachable!()
                     }
                 } else {
-                    Err(WireError::InvalidMessageError(
-                        "Message id 0-3 cannot have a payload".to_string(),
-                    ))
+                    Err(MessageError::InvalidPayload)
                 }
             }
             4 => Ok(Message::Have(u32::from_be_bytes(
                 payload.try_into().map_err(|_| {
-                    WireError::InvalidMessageError(format!(
-                        "Message id 4 requires a payload of exactly 4 bytes (Got {})",
-                        payload.len()
-                    ))
+                    MessageError::InvalidPayload
                 })?,
             ))),
             5 => Ok(Message::Bitfield(Bitfield::from_bytes(payload))),
@@ -154,10 +114,7 @@ impl TryFrom<&[u8]> for Message {
                         u32::from_be_bytes(payload[8..12].try_into().unwrap()),
                     ))
                 } else {
-                    Err(WireError::InvalidMessageError(format!(
-                        "Message id 6 requires a payload of exactly 12 bytes (Got {})",
-                        payload.len()
-                    )))
+                    Err(MessageError::InvalidPayload)
                 }
             }
             7 => {
@@ -168,11 +125,7 @@ impl TryFrom<&[u8]> for Message {
                         payload[8..].to_vec(),
                     ))
                 } else {
-                    // Message id 7 requires a payload of more than 8 bytes (Got 8)
-                    Err(WireError::InvalidMessageError(format!(
-                        "Message id 7 requires a payload of more than 8 bytes (Got {})",
-                        payload.len()
-                    )))
+                    Err(MessageError::InvalidPayload)
                 }
             }
             8 => {
@@ -183,16 +136,10 @@ impl TryFrom<&[u8]> for Message {
                         u32::from_be_bytes(payload[8..12].try_into().unwrap()),
                     ))
                 } else {
-                    Err(WireError::InvalidMessageError(format!(
-                        "Message id 8 requires a payload of exactly 12 bytes (Got {})",
-                        payload.len()
-                    )))
+                    Err(MessageError::InvalidPayload)
                 }
             }
-            id => Err(WireError::InvalidMessageError(format!(
-                "Message ids must be between 0-8 (Got {})",
-                id
-            ))),
+            id => Err(MessageError::InvalidID(id)),
         }
     }
 }
@@ -234,98 +181,19 @@ impl From<Message> for Vec<u8> {
     }
 }
 
-#[derive(Debug)]
-pub struct Wire {
-    stream: TcpStream,
-}
-
-impl Wire {
-    /// Connect to a peer
-    pub async fn connect<T: tokio::net::ToSocketAddrs>(addr: T) -> Result<Wire> {
-        tokio::net::TcpStream::connect(addr)
-            .await
-            .map(Wire::new)
-            .map_err(WireError::from)
-    }
-
-    /// Initialize the peer wire
-    pub fn new(stream: TcpStream) -> Wire {
-        Wire { stream }
-    }
-
-    /// Receives a message from the peer
-    pub async fn receive(&mut self) -> Result<Message> {
-        Message::try_from(self.receive_raw().await?.as_slice())
-    }
-
-    /// Sends a message to the peer
-    pub async fn send(&mut self, message: Message) -> Result<()> {
-        self.send_raw(Vec::from(message).as_slice()).await
-    }
-
-    /// Sends data over the wire
-    async fn send_raw(&mut self, buffer: &[u8]) -> Result<()> {
-        self.stream
-            .write_u32(buffer.len().try_into().unwrap())
-            .await?;
-        self.stream.write_all(buffer).await?;
-
-        Ok(())
-    }
-
-    /// Receives data over the wire
-    async fn receive_raw(&mut self) -> Result<Vec<u8>> {
-        let length = self.stream.read_u32().await?;
-        let mut buffer = vec![0u8; length as usize];
-
-        self.stream.read_exact(&mut buffer).await?;
-
-        Ok(buffer)
-    }
-
-    /// Receives handshake info from the peer
-    pub async fn receive_handshake(&mut self) -> Result<Handshake> {
-        let protocol_length = self.stream.read_u8().await?;
-
-        let mut protocol = vec![0u8; protocol_length as usize];
-        self.stream.read_exact(protocol.as_mut_slice()).await?;
-
-        let protocol = String::from_utf8(protocol).map_err(|_| WireError::InvalidHandshakeError)?;
-
-        if protocol != PROTOCOL {
-            return Err(WireError::InvalidHandshakeError);
+impl std::fmt::Display for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Message::KeepAlive => write!(f, "KeepAlive"),
+            Message::Choke => write!(f, "KeepAlive"),
+            Message::Unchoke => write!(f, "KeepAlive"),
+            Message::Interested => write!(f, "KeepAlive"),
+            Message::NotInterested => write!(f, "KeepAlive"),
+            Message::Have(i) => write!(f, "Have({})", i),
+            Message::Bitfield(bitfield) => write!(f, "Bitfield(<{} elements>)", bitfield.len()),
+            Message::Request(index, begin, length) => write!(f, "Request({}, {}, {})", index, begin, length),
+            Message::Piece(index, begin, piece) => write!(f, "Piece({}, {}, <{} elements>)", index, begin, piece.len()),
+            Message::Cancel(index, begin, length) => write!(f, "Cancel({}, {}, {})", index, begin, length)
         }
-
-        let mut extensions = [0u8; 8];
-        self.stream.read_exact(&mut extensions).await?;
-
-        let mut info_hash = [0u8; 20];
-        self.stream.read_exact(&mut info_hash).await?;
-
-        let mut peer_id = [0u8; 20];
-        self.stream.read_exact(&mut peer_id).await?;
-
-        Ok(Handshake {
-            extensions,
-            info_hash,
-            peer_id,
-        })
-    }
-
-    /// Sends the handshake info to the peer
-    pub async fn send_handshake(&mut self, handshake: &Handshake) -> Result<()> {
-        // Length prefixed protocol name
-        self.stream
-            .write_u8(PROTOCOL.len().try_into().unwrap())
-            .await?;
-        self.stream.write_all(PROTOCOL.as_bytes()).await?;
-
-        // Supported extensions. Currently, none are supported.
-        self.stream.write_all(&handshake.extensions).await?;
-
-        self.stream.write_all(&handshake.info_hash).await?;
-        self.stream.write_all(&handshake.peer_id).await?;
-
-        Ok(())
     }
 }

@@ -44,29 +44,3 @@ pub enum PieceEvent {
     /// Piece has been stored
     Done,
 }
-
-/*
-/// Torrent added to the session
-TorrentAdded(TorrentPtr),
-
-/// Torrent has finished downloading
-TorrentDone(TorrentPtr),
-
-TorrentAnnounced(TorrentPtr, tracker::Response),
-
-/*
-/// Piece(s) added to the work queue
-// PieceAdded,
-
-/// Piece received from a peer
-// PieceReceived,
-
-/// Piece sha1 hash verified
-// PieceVerified,
-
-/// Piece sha1 hash failed to verify
-// PieceNotVerified
-*/
-
-Shutdown
-*/

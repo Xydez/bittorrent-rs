@@ -4,48 +4,19 @@ use std::{
     time::Instant,
 };
 
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Error, Debug)]
 pub enum TrackerError {
-    RequestError(reqwest::Error),
+    #[error("Failed to send request")]
+    RequestError(#[from] reqwest::Error),
+    #[error("Received an invalid response from the tracker")]
     InvalidResponse,
-    InvalidResponseEncoding(serde_bencode::Error),
+    #[error("The tracker responded with invalid bencode")]
+    InvalidResponseEncoding(#[from] serde_bencode::Error),
+    #[error("The tracker responded with an error: {0}")]
     TrackerError(String),
 }
-
-impl From<reqwest::Error> for TrackerError {
-    fn from(error: reqwest::Error) -> Self {
-        TrackerError::RequestError(error)
-    }
-}
-
-impl From<serde_bencode::Error> for TrackerError {
-    fn from(error: serde_bencode::Error) -> Self {
-        TrackerError::InvalidResponseEncoding(error)
-    }
-}
-
-impl std::fmt::Display for TrackerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            TrackerError::RequestError(error) => write!(f, "Request error: {}", error),
-            TrackerError::InvalidResponseEncoding(error) => {
-                write!(f, "Invalid tracker response encoding: {}", error)
-            }
-            TrackerError::TrackerError(error) => write!(f, "Tracker error: {}", error),
-            TrackerError::InvalidResponse => write!(f, "Invalid tracker response"),
-        }
-    }
-}
-
-// impl std::error::Error for TrackerError {
-// 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-// 		match self {
-// 			TrackerError::RequestError(error) => Some(error),
-// 			TrackerError::InvalidResponseEncoding(error) => Some(error),
-// 			_ => None
-// 		}
-// 	}
-// }
 
 pub(crate) type Result<T> = std::result::Result<T, TrackerError>;
 

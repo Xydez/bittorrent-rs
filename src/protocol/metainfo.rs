@@ -1,59 +1,21 @@
 use sha1::Digest;
+use thiserror::Error;
 use std::convert::TryFrom;
 use std::io::Read;
 
-// impl std::fmt::Display for Hash {
-// 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-// 		for b in &self.0 {
-// 			write!(f, "{:x}", b)?;
-// 		}
-
-// 		Ok(())
-// 	}
-// }
-
-#[derive(Debug)]
-pub enum MetadataError {
-    IOError(std::io::Error),
-    BencodeError(serde_bencode::Error),
-    InvalidMetadata,
-    InvalidPieces,
-    InvalidTrackerUrl,
+#[derive(Error, Debug)]
+pub enum MetaInfoError {
+    #[error("An IO error occurred")]
+    IOError(#[from] std::io::Error),
+    #[error("Failed to serialize or deserialize bencode")]
+    BencodeError(#[from] serde_bencode::Error),
+    #[error("The meta info is invalid")]
+    InvalidMetaInfo,
 }
 
-impl From<std::io::Error> for MetadataError {
-    fn from(error: std::io::Error) -> Self {
-        MetadataError::IOError(error)
-    }
-}
+pub type Result<T> = std::result::Result<T, MetaInfoError>;
 
-impl From<serde_bencode::Error> for MetadataError {
-    fn from(error: serde_bencode::Error) -> Self {
-        MetadataError::BencodeError(error)
-    }
-}
-
-pub(crate) type Result<T> = std::result::Result<T, MetadataError>;
-
-impl std::fmt::Display for MetadataError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::IOError(error) => write!(f, "IO Error: {}", error),
-            Self::BencodeError(error) => write!(f, "Bencode error: {}", error),
-            Self::InvalidMetadata => write!(f, "Invalid metadata"),
-            Self::InvalidPieces => write!(f, "Invalid pieces"),
-            Self::InvalidTrackerUrl => write!(f, "Invalid tracker url"),
-        }
-    }
-}
-
-// impl std::error::Error for MetadataError {
-// 	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-// 		None
-// 	}
-// }
-
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetaInfo {
     pub name: String,
     pub length: usize,
@@ -65,26 +27,8 @@ pub struct MetaInfo {
     pub files: Vec<FileInfo>,
 }
 
-// struct StopErrorIter<T, I: Iterator<Item = T>> {
-// 	input: I
-// }
-
-// impl<T, I: Iterator<Item = T>> StopErrorIter<T, I> {
-// 	pub fn new(input: I) -> StopErrorIter<T, I> {
-// 		StopErrorIter { input }
-// 	}
-// }
-
-// impl<T, I: Iterator<Item = T>> Iterator for StopErrorIter<T, I> {
-// 	type Item = T;
-
-// 	fn next(&mut self) -> Option<Self::Item> {
-
-// 	}
-// }
-
 impl TryFrom<&[u8]> for MetaInfo {
-    type Error = MetadataError;
+    type Error = MetaInfoError;
 
     /// Load the MetaInfo from raw bencode
     fn try_from(buf: &[u8]) -> Result<Self> {
@@ -98,7 +42,7 @@ impl TryFrom<&[u8]> for MetaInfo {
             .info
             .pieces
             .chunks_exact(20)
-            .map(|chunk| <[u8; 20]>::try_from(chunk).map_err(|_| MetadataError::InvalidMetadata))
+            .map(|chunk| <[u8; 20]>::try_from(chunk).map_err(|_| MetaInfoError::InvalidMetaInfo))
             .collect::<Result<Vec<[u8; 20]>>>()?;
         // .into_iter()
         // .map(|chunk| Hash(chunk))
@@ -123,7 +67,7 @@ impl TryFrom<&[u8]> for MetaInfo {
                 file_infos
             }
             None => match metadata.info.length {
-                None => return Err(MetadataError::InvalidMetadata),
+                None => return Err(MetaInfoError::InvalidMetaInfo),
                 Some(length) => vec![FileInfo {
                     path: metadata.info.name.clone().into(),
                     length,
@@ -163,20 +107,7 @@ impl MetaInfo {
     }
 }
 
-impl std::fmt::Debug for MetaInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MetaInfo")
-            .field("name", &self.name)
-            .field("tracker", &self.announce)
-            .field("info_hash", &self.info_hash)
-            .field("pieces", &format!("<{} pieces>", &self.pieces.len()))
-            .field("piece_length", &self.piece_size)
-            .field("files", &self.files)
-            .finish()
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FileInfo {
     pub path: std::path::PathBuf,
     pub length: usize,
@@ -220,8 +151,27 @@ mod raw {
 mod tests {
     use super::*;
 
+    const SAMPLE_TORRENT: &[u8] = &[100, 56, 58, 97, 110, 110, 111, 117, 110, 99, 101, 51, 53, 58, 117, 100, 112, 58, 47, 47, 116, 114, 97, 99, 107, 101, 114, 46, 111, 112, 101, 110, 98, 105, 116, 116, 111, 114, 114, 101, 110, 116, 46, 99, 111, 109, 58, 56, 48, 49, 51, 58, 99, 114, 101, 97, 116, 105, 111, 110, 32, 100, 97, 116, 101, 105, 49, 51, 50, 55, 48, 52, 57, 56, 50, 55, 101, 52, 58, 105, 110, 102, 111, 100, 54, 58, 108, 101, 110, 103, 116, 104, 105, 50, 48, 101, 52, 58, 110, 97, 109, 101, 49, 48, 58, 115, 97, 109, 112, 108, 101, 46, 116, 120, 116, 49, 50, 58, 112, 105, 101, 99, 101, 32, 108, 101, 110, 103, 116, 104, 105, 54, 53, 53, 51, 54, 101, 54, 58, 112, 105, 101, 99, 101, 115, 50, 48, 58, 92, 197, 230, 82, 190, 13, 230, 242, 120, 5, 179, 4, 100, 255, 155, 0, 244, 137, 240, 201, 55, 58, 112, 114, 105, 118, 97, 116, 101, 105, 49, 101, 101, 101];
+
     #[test]
     fn test_parse() {
-        MetaInfo::load("debian-10.10.0-amd64-DVD-1.iso.torrent").unwrap();
+        let sample_torrent_meta_info = MetaInfo {
+            name: "sample.txt".to_string(),
+            length: 20,
+            announce: "udp://tracker.openbittorrent.com:80".to_string(),
+            info_hash: [136, 250, 95, 136, 226, 2, 250, 155, 100, 55, 160, 172, 184, 222, 165, 99, 222, 40, 192, 120],
+            pieces: vec![[92, 197, 230, 82, 190, 13, 230, 242, 120, 5, 179, 4, 100, 255, 155, 0, 244, 137, 240, 201]],
+            piece_size: 65536,
+            last_piece_size: 20,
+            files: vec![
+                FileInfo {
+                    path: std::path::PathBuf::from("sample.txt"),
+                    length: 20,
+                    offset: 0
+                }
+            ]
+        };
+
+        assert_eq!(MetaInfo::try_from(SAMPLE_TORRENT).unwrap(), sample_torrent_meta_info);
     }
 }

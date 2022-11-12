@@ -85,6 +85,10 @@ impl FileStore {
         Ok(())
     }
 
+    fn size(&self) -> usize {
+        self.files.iter().map(|(length, _, _)| length).sum()
+    }
+
     fn file_of_byte(&self, index: usize) -> Option<usize> {
         let mut total = 0;
 
@@ -124,11 +128,10 @@ impl Store for FileStore {
         while remaining_bytes > 0 {
             // Index of the byte we are writing
             let index = piece * self.piece_length + data.len() - remaining_bytes;
-            let file_index = self.file_of_byte(index).unwrap();
+            let file_index = self.file_of_byte(index).expect(&format!("Failed to set piece {}. Byte is out of bounds ({} >= {})", piece, index, self.size()));
             let (begin, end) = self.file_bytes(file_index);
 
             let bytes_to_write = (end - index).min(remaining_bytes);
-
 
             let (_, _, file) = &mut self.files[file_index];
             file.seek(std::io::SeekFrom::Start(index as u64 - begin as u64))?;

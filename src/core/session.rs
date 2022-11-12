@@ -1,7 +1,7 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use sha1::{Digest, Sha1};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, Semaphore, RwLock};
 
 use crate::{
     core::{event::Event, peer::Peer, util},
@@ -9,20 +9,30 @@ use crate::{
     protocol::{
         metainfo::MetaInfo,
         tracker::Announce,
-        wire,
+        wire::{Message, self},
     },
 };
 
 use super::{
     bitfield::Bitfield,
     event::{PieceEvent, TorrentEvent},
-    peer_worker::{self, Mode},
+    worker::{self, Mode},
     piece,
-    torrent::Torrent,
+    torrent::Torrent, algorithm::Picker,
 };
 
-pub(crate) type TorrentPtr = Arc<Mutex<Torrent>>;
-pub(crate) type PeerPtr = Arc<Mutex<Peer>>;
+/* Type definitions */
+
+pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
+pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
+pub type PieceID = u32;
+pub type TorrentPtr = Arc<Mutex<Torrent>>;
+pub type PeerPtr = Arc<Mutex<Peer>>;
+pub type PickerPtr = Arc<RwLock<Picker>>;
+
+pub trait EventCallback = Fn(&Session, &Event);
+
+/* Application constants */
 
 /// Timeout when attempting to connect to a peer
 pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f64(8.0);
@@ -33,34 +43,18 @@ pub const ALIVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f6
 /// Size of a block. 16 KiB is the maximum permitted by the spec.
 pub const BLOCK_SIZE: u32 = 16_384;
 
-/// The maximum amount of concurrent requests that can be sent to a peer
+/// The maximum amount of concurrent requests that can be sent to a peer (normally 5)
 pub const BLOCK_CONCURRENT_REQUESTS: usize = 5;
 
-// TODO:
-// Rewrite `peer_worker.rs`
-//  - Find a better way to shut them down, would be nice to try to bind their lifetime to `Session` and implement `Drop`. Try to avoid using smart pointers because they keep the application alive. Weak pointers can be used in the worst case.
-//      - `Peer::new(torrent: Torrent<'a>) -> Peer<'a>`
-//      - Always send a `bittorrent::wire::Message::Cancel` when the peer worker shuts down
-//  - Using the new states we should also create a `verification_worker.rs` that handles verifying pieces.
-//  - The current idea is that workers scan the torrent pieces and follow prioritization rules to find work.
-//      - Add a flag `end_game` which enables
-//      - Add a new `Settings` struct that contains the aforementioned flag.
-//          - Maybe also add a builder.
-
-// TODO:
-// Just copy over things from the old client, we want almost everything except the work queue which should be replaced by the new peer and verification workers. Also we didn't used to join the old peer worker, which was pretty damn stupid.
-
-pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
-pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
-pub type PieceID = u32;
-
-pub trait EventCallback = Fn(&Session, &Event);
+/// The maximum number of active piece verification jobs
+pub const VERIFICATION_WORKERS: usize = 4;
 
 pub struct Session<'a> {
     pub peer_id: [u8; 20],
     pub torrents: Vec<TorrentPtr>,
     listeners: Vec<Box<dyn EventCallback + 'a>>,
-    tx: EventSender, // TODO: Separate channel for sending a clone of the Event to the user
+    // TODO: Separate channel for sending a clone of the Event to the user
+    tx: EventSender,
     rx: EventReceiver,
     /// Semaphore to track the number of pieces that can be verified at the same time
     verification_semaphore: Arc<Semaphore>,
@@ -77,7 +71,7 @@ impl<'a> Session<'a> {
             listeners: Vec::new(),
             tx,
             rx,
-            verification_semaphore: Arc::new(Semaphore::new(4)),
+            verification_semaphore: Arc::new(Semaphore::new(VERIFICATION_WORKERS)),
         }
     }
 
@@ -120,13 +114,11 @@ impl<'a> Session<'a> {
                         let peer_id = self.peer_id;
                         let info_hash = torrent.lock().await.meta_info.info_hash;
 
-                        // 1. Add all peers to the torrent
+                        // Add all peers to the torrent
                         for addr in response.peers_addrs.clone() {
                             let torrent = torrent.clone();
-
                             let tx = self.tx.clone();
 
-                            // TODO: We want to save the handle and do the PeerWorker thing
                             // TODO: Move all of this into `peer_worker::spawn(...)`
                             tokio::spawn(async move {
                                 let mut peer = match tokio::time::timeout(
@@ -150,7 +142,7 @@ impl<'a> Session<'a> {
                                         peer
                                     }
                                     Ok(Err(error)) => {
-                                        log::error!("Failed to connect to peer. {}", error);
+                                        log::error!("Failed to connect to peer. {}", util::error_chain(error));
                                         return;
                                     }
                                     Err(_) => {
@@ -183,7 +175,7 @@ impl<'a> Session<'a> {
                                         .collect::<Vec<u8>>(),
                                 );
 
-                                peer.send(wire::Message::Bitfield(bitfield)).await.unwrap();
+                                peer.send(Message::Bitfield(bitfield)).await.unwrap();
 
                                 // let peer = Arc::new(Mutex::new(peer));
                                 // torrent.lock().await.peers.push(peer.clone());
@@ -221,9 +213,9 @@ impl<'a> Session<'a> {
                                         }
                                     );
 
-                                    let task = peer_worker::start_worker(torrent.clone(), peer.clone(), tx, mode_rx);
+                                    let task = worker::spawn(torrent.clone(), peer.clone(), tx, mode_rx);
 
-                                    torrent.lock().await.peers.push(peer_worker::Worker {
+                                    torrent.lock().await.peers.push(worker::Worker {
                                         mode_tx,
                                         peer,
                                         task 
@@ -231,26 +223,24 @@ impl<'a> Session<'a> {
                                 }
                             });
                         }
-
-                        // (not yet sure about this)
-                        // 2. Iterate over all peers and select which ones to download from and which ones to seed to
-                        /*
-                        {
-                            let lock = torrent.lock().await;
-
-                            for worker in &lock.peers {
-                                //let piece = Torre§
-
-                                //Self::select_piece(&lock, worker);
-                                todo!("Probably just do this in peer_worker instead")
-                            }
-                        }
-                        */
                     }
                     TorrentEvent::PieceEvent(piece, event) => match &event {
-                        PieceEvent::Block(_) => (),
+                        PieceEvent::Block(_) => if let Some(data) = torrent.lock().await.downloads[piece].lock().await.data() {
+                            log::debug!("PieceEvent::Block | piece={piece} | Final block received, emitting TorrentEvent::Downloaded");
+
+                            self.tx.send(Event::TorrentEvent(
+                                torrent.clone(),
+                                TorrentEvent::PieceEvent(
+                                    *piece,
+                                    PieceEvent::Downloaded(Arc::new(data))
+                                )
+                            )).unwrap();
+                        }
+                        ,
                         PieceEvent::Downloaded(data) => {
-                            // TODO: Spawn a thread that verifies the data
+                            log::debug!("PieceEvent::Downloaded | piece={piece} | Piece downloaded, starting verification worker");
+
+                            // TODO: Spawn a thread that verifies the data (verification workers)
                             let semaphore = self.verification_semaphore.clone();
                             let tx = self.tx.clone();
                             let piece = *piece;
@@ -262,7 +252,8 @@ impl<'a> Session<'a> {
                                 torrent.lock().await.pieces[piece as usize].state = piece::State::Verifying;
 
                                 let hash = torrent.lock().await.meta_info.pieces[piece as usize];
-                                let intact = verify_piece(&data, &hash);
+                                //let intact = verify_piece(&data, &hash);
+                                let intact = async_verify(data.clone(), &hash).await;
 
                                 torrent.lock().await.pieces[piece as usize].state = if intact {
                                     piece::State::Verified
@@ -280,6 +271,8 @@ impl<'a> Session<'a> {
                             });
                         }
                         PieceEvent::Verified(data) => {
+                            log::debug!("PieceEvent::Verified | piece={piece} | Piece verified, writing to store");
+
                             // Store the piece
                             let tx = self.tx.clone();
                             let data = data.clone();
@@ -287,16 +280,17 @@ impl<'a> Session<'a> {
                             let piece = *piece;
 
                             let lock = torrent.lock().await;
-                            let piece_size = lock.meta_info.piece_size;
+                            //let piece_size = lock.meta_info.piece_size;
                             let store = lock.store.clone();
                             drop(lock);
 
                             tokio::spawn(async move {
-                                store
-                                    .lock()
-                                    .await
-                                    .set(piece as usize * piece_size, &data)
-                                    .expect("Failed to write to store");
+                                tokio::task::spawn_blocking(move || {
+                                    store
+                                        .blocking_lock()
+                                        .set(piece as usize, &data)
+                                        .expect("Failed to write to store");
+                                }).await.unwrap();
 
                                 torrent.lock().await.pieces[piece as usize].state = piece::State::Done;
                                 tx.send(Event::TorrentEvent(
@@ -308,7 +302,7 @@ impl<'a> Session<'a> {
                         } // TODO: (Maybe) push the data onto an io writer queue. How do we pass around the data?
                         PieceEvent::Done => (),
                     },
-                    TorrentEvent::Done => todo!("Implement TorrentEvent::Done"),
+                    TorrentEvent::Done => todo!("TorrentEvent::Done"),
                 },
                 Event::Shutdown => {
                     log::info!("Event::Shutdown");
@@ -316,6 +310,7 @@ impl<'a> Session<'a> {
                 }
             }
 
+            // Inform the listeners of the event
             for listener in &self.listeners {
                 listener(self, &event);
             }
@@ -329,8 +324,6 @@ impl<'a> Session<'a> {
         // TODO: Check if we are even running (if the event loop is running)
         // TODO: `&self` should maybe be `&mut self`?
     }
-
-    
 }
 
 /// Announces a torrent
@@ -405,4 +398,11 @@ pub(crate) fn piece_size(piece: PieceID, meta_info: &MetaInfo) -> usize {
 /// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
 fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
     hash == &<[u8; 20]>::try_from(Sha1::digest(piece).as_slice()).unwrap()
+}
+
+async fn async_verify(piece: Arc<Vec<u8>>, hash: &[u8; 20]) -> bool {
+    // Use spawn_blocking because it is a CPU bound task
+    hash == &tokio::task::spawn_blocking(move || {
+        <[u8; 20]>::try_from(Sha1::digest(&*piece).as_slice()).unwrap()
+    }).await.unwrap()
 }
