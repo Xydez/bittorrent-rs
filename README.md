@@ -29,6 +29,8 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Allow requesting specific byte ranges from the torrent, and the client will prioritize those pieces
 * Add a new `Settings` struct
 * Write and use [peer_id](src/protocol/peer_id.rs)
+* Resuming downloads
+  * Keep resume data in a file beside the torrent (<torrent_name>.resume)
 * Document all the code
 
 ### Changes
@@ -45,6 +47,10 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Find a nicer way to handle bytes, such as a trait to convert to/from bytes, as well as using `Bytes` instead of `Vec<u8>`?
   * The current way works just fine, though?
 * Use [tokio::task::JoinSet](https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html) in Session to track the peer tasks
+* It might be a good idea to let multiple peers work on the same piece normally
+  * We could change the PieceIterator to no longer have a "current download" and just check the ongoing `torrent.downloads` before calling the picker.
+  * This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways
+* Rename maybe_blocks to the inverse "out_of_blocks" or something which is clearer
 
 ### Notes
 * Make sure all Worker in session.peers are alive
