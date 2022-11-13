@@ -6,14 +6,13 @@ use tokio::sync::Mutex;
 use crate::{
     core::{
         event::{Event, PieceEvent, TorrentEvent},
-        peer::{PeerError},
+        peer::{PeerError, Peer},
         session::{EventSender, PeerPtr, PieceID, TorrentPtr, self, BLOCK_CONCURRENT_REQUESTS},
-        piece_download::PieceDownload, block, util,
+        torrent::Torrent,
+        piece_download::PieceDownload, block, util, piece
     },
     protocol::wire::Message,
 };
-
-use super::{torrent::Torrent, peer::Peer};
 
 #[derive(Error, Debug)]
 pub enum WorkerError {
@@ -56,8 +55,11 @@ impl PieceIterator {
             Some(v)
         } else {
             let piece = torrent.picker.select_piece(torrent, peer);
+
             self.download = piece.map(|piece| {
                 let piece_size = session::piece_size(piece, &torrent.meta_info);
+
+                torrent.pieces[piece as usize].state = piece::State::Downloading;
 
                 (
                     piece,
@@ -127,8 +129,6 @@ pub fn spawn(
         }
 
         loop {
-            let block_semaphore = block_semaphore.clone();
-
             tokio::select! {
                 // Forward messages from message_send
                 message = message_send_rx.recv() => {
@@ -154,14 +154,25 @@ pub fn spawn(
                         maybe_blocks = true;
                     }
 
-                    log::trace!("[{pid}] forwarding message to block task {}", message);
+                    log::trace!("[{pid}] forwarding message to block task: {}", message);
+
+                    if matches!(message, Message::KeepAlive) {
+                        log::trace!("[{pid}] maybe_blocks={}, semaphore.available_permits={}, message_send_tx.receiver_count={} peer_choking={}",
+                            maybe_blocks,
+                            block_semaphore.available_permits(),
+                            message_recv_tx.receiver_count(),
+                            peer.peer_choking()
+                        );
+                    }
+
                     if message_recv_tx.send(message).is_err() {
                         log::trace!("[{pid}] no message receivers");
                     }
                 },
                 // If downloading is enabled, we are unchoked and there are blocks available, download them
-                permit = block_semaphore.acquire_owned(), if !peer.peer_choking() && mode_rx.borrow().download && maybe_blocks => {
-                    let begin = std::time::Instant::now();
+                permit = block_semaphore.clone().acquire_owned(), if !peer.peer_choking() && mode_rx.borrow().download && maybe_blocks => {
+                    log::trace!("[{pid}] permit acquired");
+
                     let Some((download, piece, block)) = picker_iter.take(&mut *torrent.write().await, &peer).await else {
                         log::trace!("[{pid}] no blocks to download");
                         maybe_blocks = false;
@@ -169,7 +180,6 @@ pub fn spawn(
                     };
 
                     download.lock().await.blocks[block].state = block::State::Downloading;
-                    //log::trace!("[{pid}] found block in {:.1} \u{03bc}s", (std::time::Instant::now() - begin).as_micros());
 
                     log::trace!("[{pid}] starting get_block");
                     get_block_tasks.spawn(
@@ -255,7 +265,6 @@ pub fn spawn(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn get_block(
     pid: String,
     _permit: tokio::sync::OwnedSemaphorePermit,
@@ -308,41 +317,7 @@ async fn get_block(
             Ok(ref data) => block::State::Done(data.clone()),
             Err(_) => block::State::Pending
         };
-
-        /*
-        if result.2.is_ok() {
-            let blocks_total = lock.blocks().count();
-            let blocks_done = lock.blocks().filter(|block| matches!(block.state, block::State::Done(_))).count();
-
-            log::trace!(
-                "[{pid}] Received piece {} block {}-{} ({}/{} blocks)",
-                piece, block_begin, block_begin + block_size,
-                blocks_done, blocks_total
-            );
-
-            //event_tx.send(Event::TorrentEvent(torrent, TorrentEvent::PieceEvent(piece, PieceEvent::Block(block)))).unwrap();
-        }
-        */
-
-        /*
-        lock.blocks[block].state = match result {
-            Ok(ref data) => {
-                log::trace!(
-                    "[{pid}] Received piece {} block {}-{} ({}/{} blocks)",
-                    piece, block_begin, block_begin + block_size,
-                    blocks_done, blocks_total
-                );
-                event_tx.send(Event::TorrentEvent(torrent, TorrentEvent::PieceEvent(piece, PieceEvent::Block(block)))).unwrap();
-                block::State::Done(data.to_vec()) // Clone the data
-            },
-            Err(_) => block::State::Pending
-        };
-        */
     }
 
-    // What is the point of returning the data if we are sending the event? Do either but not both.
-    // Use the same method of returning errors and blocks
-    // Since we are setting block::State::Downloading in `spawn`, we should set it to `Done` there too.
-    // A good idea would be to send back a `Result` with a channel
     result
 }

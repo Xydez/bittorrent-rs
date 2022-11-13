@@ -3,3 +3,4 @@
 /torrents
 /logs
 *.log
+.vscode/

@@ -35,7 +35,7 @@ impl TryFrom<&[u8]> for MetaInfo {
         let metadata: raw::MetaInfo = serde_bencode::from_bytes(buf)?;
 
         let mut info_hash = [0u8; 20];
-        let digest = sha1::Sha1::digest(&serde_bencode::to_bytes(&metadata.info)?);
+        let digest = sha1::Sha1::digest(serde_bencode::to_bytes(&metadata.info)?);
         info_hash.copy_from_slice(&digest);
 
         let pieces = metadata

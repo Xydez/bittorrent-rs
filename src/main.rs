@@ -13,7 +13,7 @@ const TORRENT: &str = "torrents/[SubsPlease] Kage no Jitsuryokusha ni Naritakute
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let _logger = flexi_logger::Logger::try_with_str("debug, bittorrent=trace").unwrap()
+    let _logger = flexi_logger::Logger::try_with_str("debug, bittorrent=trace, bittorrent::core::worker=debug").unwrap()
         .log_to_file(flexi_logger::FileSpec::default().directory("logs"))
         .write_mode(flexi_logger::WriteMode::BufferDontFlush)
         .print_message()

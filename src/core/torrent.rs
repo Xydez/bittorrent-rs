@@ -57,7 +57,7 @@ impl Torrent {
         self.pieces
             .iter()
             .enumerate()
-            .filter(|(_, piece)| piece.state == State::Pending)
+            .filter(|(_, piece)| piece.state == State::Downloading)
             .map(|(i, p)| (i as PieceID, p))
     }
 
@@ -78,5 +78,9 @@ impl Torrent {
     // note: maybe put in util & generic instead
     pub fn pieces_grouped(&self) -> BTreeMap<Priority, Vec<(usize, &Piece)>> {
         util::group_by_key(self.pieces.iter().enumerate(), |(_, piece)| piece.priority)
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.pieces.iter().all(|piece| piece.state == State::Done)
     }
 }

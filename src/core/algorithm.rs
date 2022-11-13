@@ -17,7 +17,7 @@ pub struct Picker {
 impl Picker {
     pub fn new() -> Self {
         Picker {
-            end_game: false
+            end_game: true // TODO: Having end_game permanently enabled seems weird, either remove the variable completely or find some condition for enabling it
         }
     }
 
@@ -36,7 +36,7 @@ impl Picker {
                 .filter(|(i, _)| peer.has_piece(*i))
                 .choose(&mut rand::thread_rng())
                 .map(|(i, _)| i)
-        } else if !self.end_game {
+        } else {
             // If we have at least four complete pieces, use a "rarest piece first" so we will have more unusual pieces, which will be helpful in the trade with other peers.
             torrent.pending_pieces()
                 .filter(|(i, _)| peer.has_piece(*i))
@@ -44,7 +44,7 @@ impl Picker {
                 .tap_mut(|pieces|
                     pieces.sort_by(|(_, a), (_, b)|
                         a.priority
-                            .cmp(&b.priority)
+                            .cmp(&b.priority) // TODO: Priority should be descending, availability should be ascending
                             .then(a.availability.cmp(&b.availability))
                     )
                 )
@@ -53,10 +53,12 @@ impl Picker {
                 .map(|(i, _)| i)
                 .enumerate()
                 .collect::<Vec<_>>()
+                //.first()
                 .choose_weighted(&mut rand::thread_rng(), |(i, _)| 256 / 2i32.pow(*i as u32 + 1))
                 .ok()
                 .map(|(_, p)| *p)
                 .or_else(||
+                    // If we are in the end game, we are allowed to select downloading pieces if no pending pieces are found
                     if self.end_game {
                         torrent.downloading_pieces()
                             .filter(|(i, _)| peer.has_piece(*i))
@@ -70,8 +72,9 @@ impl Picker {
                         None
                     }
                 )
-        } else {
-            // If we are in the end game, select a random piece with state Pending, or Downloading if no pending pieces are found
+        }
+        /*
+        else {
             torrent.pending_pieces()
                 .filter(|(i, _)| peer.has_piece(*i))
                 .collect::<Vec<_>>()
@@ -81,9 +84,10 @@ impl Picker {
                 .choose(&mut rand::thread_rng())
                 .map(|(i, _)| *i)
         }
+        */
     }
 
-    pub fn select_block(&self, download: &PieceDownload) -> Option<usize> { // Option<(u32, u32)>
+    pub fn select_block(&self, download: &PieceDownload) -> Option<usize> {
         // Returns the first pending block. Returns downloading blocks in endgame if no pending blocks are.
         download.blocks
             .iter()
@@ -91,10 +95,12 @@ impl Picker {
             .find(|(_, block)| block.state == block::State::Pending)
             .or_else(||
                 if self.end_game {
+                    // TODO: We need to make sure we aren't already requesting the block from the peer
                     download.blocks
                         .iter()
                         .enumerate()
-                        .find(|(_, block)| block.state == block::State::Downloading)
+                        .filter(|(_, block)| block.state == block::State::Downloading)
+                        .choose(&mut rand::thread_rng())
                 } else {
                     None
                 }

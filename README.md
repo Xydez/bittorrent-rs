@@ -14,10 +14,11 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * https://github.com/webtor-io/content-transcoder
 * https://www.bittorrent.org/beps/bep_0009.html
 * https://www.bittorrent.org/beps/bep_0010.html
+* http://conferences.sigcomm.org/imc/2006/papers/p20-legout.pdf
 
 ## TODO
 ### Investigations
-* Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams
+* ~~Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams~~
 * Investigate [tracing](https://lib.rs/crates/tracing) for better logging
 * Investigate using cargo-audit and cargo-deny to use secure libraries with correct licenses (see [rustsec](https://rustsec.org/))
 
@@ -28,6 +29,7 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Allow requesting specific byte ranges from the torrent, and the client will prioritize those pieces
 * Add a new `Settings` struct
 * Write and use [peer_id](src/protocol/peer_id.rs)
+* Document all the code
 
 ### Changes
 * ~~We should wait until a torrent added message or something like that in the peer threads instead of sleeping~~
@@ -41,6 +43,7 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Look for ways to optimize away some mutexes/rwlocks
 * Implement std::fmt::Display for Event and remove dependency on [strum](https://lib.rs/crates/strum)
 * Find a nicer way to handle bytes, such as a trait to convert to/from bytes, as well as using `Bytes` instead of `Vec<u8>`?
+  * The current way works just fine, though?
 * Use [tokio::task::JoinSet](https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html) in Session to track the peer tasks
 
 ### Notes
@@ -70,12 +73,12 @@ We want to weave all requests in one, so basically we have a thread that loops a
 * ~~Are we removing PieceDownload when it is finished?~~
 * ~~Create a `PieceEvent::Block`~~
   * ~~Maybe we should assemble the piece in [session](src/core/session.rs)?~~
+* ~~Does Picker need its own RwLock? Since it's always used with Torrent it means both will be locked simultaneously anyways~~
+* ~~Is there some way to wait instead of lagging when broadcasting messages? (Only do this after we know the code works)~~
 * Update `piece.availability` when bitfield/have is received
 * Enable endgame when all pieces are downloading
 * Find a way to receive when a block has been cancelled
   * I think passing a broadcast to all `get_block` instances is the best way to do this
-* Does Picker need its own RwLock? Since it's always used with Torrent it means both will be locked simultaneously anyways
-* Is there some way to wait instead of lagging when broadcasting messages? (Only do this after we know the code works)
 
 ### Errors
 * ~~Why is `get_block` crashing? Investigate the [log](latest.log)~~
@@ -86,12 +89,13 @@ We want to weave all requests in one, so basically we have a thread that loops a
   * ~~Are we waiting for unchoke?~~
   * ~~Is the message receive getting canceled? Edit: YES, read_exact does not have cancellation safety.~~
   * ~~Use thiserror in metainfo.rs~~
-* Investigate the [log](logs/bittorrent_2022-11-12_23-11-22.log)
+* ~~Investigate the [log](logs/bittorrent_2022-11-12_23-11-22.log)~~
   * ~~We also only see 15/16 pieces downloaded, why doesn't the last message show up?~~
-  * **The peer downloads one complete piece, then idles (doesn't exit)**
-  * Find a better way to retreive the next block
-    * (?) PickerIterator
-      * Maintains a piecedownload from select_piece and switches when select_block is None.
-      * Returns None when select_piece returns None
-* Perhaps it slows down over time because we are hogging up tasks by returning a value that is never joined?
-  * Find out if we need to join tokio tasks or not
+  * ~~The peer downloads one complete piece, then idles (doesn't exit)~~
+  * ~~Find a better way to retreive the next block~~
+    * ~~(?) PickerIterator~~
+      * ~~Maintains a piecedownload from select_piece and switches when select_block is None.~~
+      * ~~Returns None when select_piece returns None~~
+* ~~We are seeing `BLOCK IS NONE` in the log after which pieces stop being requested, but is this really true?~~
+  * ~~Suspecting the fault might actually be in `select_piece` though - just intuition~~
+  * ~~My thought is that it's giving us a dogshit piece~~

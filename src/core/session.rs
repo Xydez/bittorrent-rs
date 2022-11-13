@@ -96,7 +96,7 @@ impl<'a> Session<'a> {
     pub async fn start(&mut self) {
         while let Some(event) = self.rx.recv().await {
             match &event {
-                Event::TorrentEvent(torrent, event) => match &event {
+                Event::TorrentEvent(torrent, event) => match event {
                     TorrentEvent::Added => {
                         log::info!(
                             "TorrentEvent::Added {}",
@@ -203,7 +203,7 @@ impl<'a> Session<'a> {
                             });
                         }
                     }
-                    TorrentEvent::PieceEvent(piece, event) => match &event {
+                    TorrentEvent::PieceEvent(piece, event) => match event {
                         PieceEvent::Block(block) => {
                             let Some(download) = torrent.read().await.downloads.get(piece).cloned() else {
                                 // This probably means that the download succeeded but we did not cancel the piece
@@ -215,7 +215,11 @@ impl<'a> Session<'a> {
 
                             if let Some(data) = download_lock.data() {
                                 // Remove the piece download because it is done
-                                torrent.write().await.downloads.remove(piece);
+                                {
+                                    let mut lock = torrent.write().await;
+                                    lock.downloads.remove(piece);
+                                    lock.pieces[*piece as usize].state = piece::State::Downloaded;
+                                }
 
                                 log::debug!("PieceEvent::Block | piece={piece} | Final block received, emitting TorrentEvent::Downloaded");
 
@@ -291,9 +295,15 @@ impl<'a> Session<'a> {
                                 .unwrap();
                             });
                         } // TODO: (Maybe) push the data onto an io writer queue. How do we pass around the data?
-                        PieceEvent::Done => (),
+                        PieceEvent::Done => {
+                            if torrent.read().await.is_done() {
+                                self.tx.send(Event::TorrentEvent(torrent.clone(), TorrentEvent::Done)).unwrap();
+                            }
+                        }
                     },
-                    TorrentEvent::Done => todo!("TorrentEvent::Done"),
+                    TorrentEvent::Done => {
+                        log::info!("Torrent {} is done.", torrent.read().await.meta_info.name);
+                    },
                 },
                 Event::Shutdown => {
                     log::info!("Event::Shutdown");
