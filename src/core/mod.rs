@@ -3,6 +3,7 @@ pub mod bitfield;
 pub mod block;
 pub mod event;
 pub mod peer;
+pub mod piece_download;
 pub mod piece;
 pub mod session;
 pub mod torrent;

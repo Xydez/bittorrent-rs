@@ -7,7 +7,7 @@
 use rand::seq::{SliceRandom, IteratorRandom};
 use tap::Tap;
 
-use super::{block, piece, session::PieceID, torrent::{Torrent, PieceDownload}, peer::Peer};
+use super::{block, piece, session::PieceID, torrent::Torrent, peer::Peer, piece_download::PieceDownload};
 
 #[derive(Debug)]
 pub struct Picker {
@@ -54,11 +54,25 @@ impl Picker {
                 .enumerate()
                 .collect::<Vec<_>>()
                 .choose_weighted(&mut rand::thread_rng(), |(i, _)| 256 / 2i32.pow(*i as u32 + 1))
-                .map(|(_, p)| *p)
                 .ok()
+                .map(|(_, p)| *p)
+                .or_else(||
+                    if self.end_game {
+                        torrent.downloading_pieces()
+                            .filter(|(i, _)| peer.has_piece(*i))
+                            .collect::<Vec<_>>()
+                            .tap_mut(|pieces|
+                                pieces.sort_by_key(|(_, piece)| piece.availability)
+                            )
+                            .choose(&mut rand::thread_rng())
+                            .map(|(p, _)| *p)
+                    } else {
+                        None
+                    }
+                )
         } else {
-            // If we are in the end game, select a random piece with state Pending or Downloading
-            torrent.active_pieces()
+            // If we are in the end game, select a random piece with state Pending, or Downloading if no pending pieces are found
+            torrent.pending_pieces()
                 .filter(|(i, _)| peer.has_piece(*i))
                 .collect::<Vec<_>>()
                 .tap_mut(|pieces|
@@ -75,11 +89,22 @@ impl Picker {
             .iter()
             .enumerate()
             .find(|(_, block)| block.state == block::State::Pending)
-            .or_else(|| download.blocks
-                .iter()
-                .enumerate()
-                .find(|(_, block)| block.state == block::State::Downloading)
+            .or_else(||
+                if self.end_game {
+                    download.blocks
+                        .iter()
+                        .enumerate()
+                        .find(|(_, block)| block.state == block::State::Downloading)
+                } else {
+                    None
+                }
             )
             .map(|(i, _)| i)
+    }
+}
+
+impl Default for Picker {
+    fn default() -> Self {
+        Self::new()
     }
 }

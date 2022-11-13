@@ -44,9 +44,6 @@ impl TryFrom<&[u8]> for MetaInfo {
             .chunks_exact(20)
             .map(|chunk| <[u8; 20]>::try_from(chunk).map_err(|_| MetaInfoError::InvalidMetaInfo))
             .collect::<Result<Vec<[u8; 20]>>>()?;
-        // .into_iter()
-        // .map(|chunk| Hash(chunk))
-        // .collect::<Vec<[u8; 20]>>();
 
         let files = match metadata.info.files {
             Some(files) => {
@@ -107,7 +104,7 @@ impl MetaInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileInfo {
     pub path: std::path::PathBuf,
     pub length: usize,

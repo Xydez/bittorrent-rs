@@ -18,7 +18,8 @@ use super::{
     event::{PieceEvent, TorrentEvent},
     worker::{self, Mode},
     piece,
-    torrent::Torrent, algorithm::Picker,
+    torrent::Torrent,
+    piece_download::PieceDownload,
 };
 
 /* Type definitions */
@@ -26,9 +27,9 @@ use super::{
 pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
 pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
 pub type PieceID = u32;
-pub type TorrentPtr = Arc<Mutex<Torrent>>;
+pub type TorrentPtr = Arc<RwLock<Torrent>>;
 pub type PeerPtr = Arc<Mutex<Peer>>;
-pub type PickerPtr = Arc<RwLock<Picker>>;
+pub type PieceDownloadPtr = Arc<Mutex<PieceDownload>>;
 
 pub trait EventCallback = Fn(&Session, &Event);
 
@@ -82,7 +83,7 @@ impl<'a> Session<'a> {
 
     /// Adds a torrent to the session
     pub fn add(&mut self, meta_info: MetaInfo, store: Box<dyn Store>) {
-        let torrent = Arc::new(Mutex::new(Torrent::new(meta_info, store)));
+        let torrent = Arc::new(RwLock::new(Torrent::new(meta_info, store)));
 
         self.torrents.push(torrent.clone());
 
@@ -98,8 +99,8 @@ impl<'a> Session<'a> {
                 Event::TorrentEvent(torrent, event) => match &event {
                     TorrentEvent::Added => {
                         log::info!(
-                            "Event::TorrentAdded {}",
-                            util::hex(&torrent.lock().await.meta_info.info_hash)
+                            "TorrentEvent::Added {}",
+                            util::hex(&torrent.read().await.meta_info.info_hash)
                         );
 
                         tokio::spawn(try_announce(
@@ -109,17 +110,22 @@ impl<'a> Session<'a> {
                         ));
                     }
                     TorrentEvent::Announced(response) => {
+                        log::info!(
+                            "TorrentEvent::Announced {}",
+                            util::hex(&torrent.read().await.meta_info.info_hash)
+                        );
+
                         let torrent = torrent.clone();
 
                         let peer_id = self.peer_id;
-                        let info_hash = torrent.lock().await.meta_info.info_hash;
+                        let info_hash = torrent.read().await.meta_info.info_hash;
 
                         // Add all peers to the torrent
                         for addr in response.peers_addrs.clone() {
                             let torrent = torrent.clone();
                             let tx = self.tx.clone();
 
-                            // TODO: Move all of this into `peer_worker::spawn(...)`
+                            // TODO: Use a tokio::task::JoinSet instead
                             tokio::spawn(async move {
                                 let mut peer = match tokio::time::timeout(
                                     CONNECT_TIMEOUT,
@@ -156,7 +162,7 @@ impl<'a> Session<'a> {
                                 // Create a bitfield of our pieces
                                 let bitfield = Bitfield::from_bytes(
                                     &torrent
-                                        .lock()
+                                        .read()
                                         .await
                                         .pieces
                                         .chunks(8)
@@ -177,34 +183,7 @@ impl<'a> Session<'a> {
 
                                 peer.send(Message::Bitfield(bitfield)).await.unwrap();
 
-                                // let peer = Arc::new(Mutex::new(peer));
-                                // torrent.lock().await.peers.push(peer.clone());
-                                // peer_worker::run_worker(peer, torrent, tx).await;
-
-                                /*
                                 {
-                                    let mut lock = torrent.lock().await;
-                                    let worker = peer_worker::Worker::spawn(
-                                        Arc::new(Mutex::new(peer)),
-                                        torrent.clone(),
-                                        tx,
-                                    );
-                                    lock.peers.push(worker);
-                                }
-                                */
-
-                                {
-                                    // TODO:
-                                    /*
-                                    let peer = Arc::new(Mutex::new(peer));
-                                    let (state_tx, state_rx) = tokio::sync::watch::channel(peer_worker::State::Idle);
-                                    torrent.lock().await.peers.push(peer_worker::Worker {
-                                        peer: peer.clone(),
-                                        state_tx
-                                    });
-                                    peer_worker::run_worker(peer, torrent.clone(), tx, state_rx).await.unwrap();
-                                    */
-
                                     let peer = Arc::new(Mutex::new(peer));
                                     let (mode_tx, mode_rx) = tokio::sync::watch::channel(
                                         Mode {
@@ -215,7 +194,7 @@ impl<'a> Session<'a> {
 
                                     let task = worker::spawn(torrent.clone(), peer.clone(), tx, mode_rx);
 
-                                    torrent.lock().await.peers.push(worker::Worker {
+                                    torrent.write().await.peers.push(worker::Worker {
                                         mode_tx,
                                         peer,
                                         task 
@@ -225,18 +204,30 @@ impl<'a> Session<'a> {
                         }
                     }
                     TorrentEvent::PieceEvent(piece, event) => match &event {
-                        PieceEvent::Block(_) => if let Some(data) = torrent.lock().await.downloads[piece].lock().await.data() {
-                            log::debug!("PieceEvent::Block | piece={piece} | Final block received, emitting TorrentEvent::Downloaded");
+                        PieceEvent::Block(block) => {
+                            let Some(download) = torrent.read().await.downloads.get(piece).cloned() else {
+                                // This probably means that the download succeeded but we did not cancel the piece
+                                log::warn!("download for piece {} block {} not found, block downloaded in vain", piece, block);
+                                continue;
+                            };
 
-                            self.tx.send(Event::TorrentEvent(
-                                torrent.clone(),
-                                TorrentEvent::PieceEvent(
-                                    *piece,
-                                    PieceEvent::Downloaded(Arc::new(data))
-                                )
-                            )).unwrap();
-                        }
-                        ,
+                            let download_lock = download.lock().await;
+
+                            if let Some(data) = download_lock.data() {
+                                // Remove the piece download because it is done
+                                torrent.write().await.downloads.remove(piece);
+
+                                log::debug!("PieceEvent::Block | piece={piece} | Final block received, emitting TorrentEvent::Downloaded");
+
+                                self.tx.send(Event::TorrentEvent(
+                                    torrent.clone(),
+                                    TorrentEvent::PieceEvent(
+                                        *piece,
+                                        PieceEvent::Downloaded(Arc::new(data))
+                                    )
+                                )).unwrap();
+                            }
+                        },
                         PieceEvent::Downloaded(data) => {
                             log::debug!("PieceEvent::Downloaded | piece={piece} | Piece downloaded, starting verification worker");
 
@@ -249,13 +240,13 @@ impl<'a> Session<'a> {
 
                             tokio::spawn(async move {
                                 let _permit = semaphore.acquire_owned().await.unwrap();
-                                torrent.lock().await.pieces[piece as usize].state = piece::State::Verifying;
+                                torrent.write().await.pieces[piece as usize].state = piece::State::Verifying;
 
-                                let hash = torrent.lock().await.meta_info.pieces[piece as usize];
+                                let hash = torrent.read().await.meta_info.pieces[piece as usize];
                                 //let intact = verify_piece(&data, &hash);
                                 let intact = async_verify(data.clone(), &hash).await;
 
-                                torrent.lock().await.pieces[piece as usize].state = if intact {
+                                torrent.write().await.pieces[piece as usize].state = if intact {
                                     piece::State::Verified
                                 } else {
                                     piece::State::Pending // TODO: If we use Block we also need to reset the block state
@@ -279,7 +270,7 @@ impl<'a> Session<'a> {
                             let torrent = torrent.clone();
                             let piece = *piece;
 
-                            let lock = torrent.lock().await;
+                            let lock = torrent.read().await;
                             //let piece_size = lock.meta_info.piece_size;
                             let store = lock.store.clone();
                             drop(lock);
@@ -292,7 +283,7 @@ impl<'a> Session<'a> {
                                         .expect("Failed to write to store");
                                 }).await.unwrap();
 
-                                torrent.lock().await.pieces[piece as usize].state = piece::State::Done;
+                                torrent.write().await.pieces[piece as usize].state = piece::State::Done;
                                 tx.send(Event::TorrentEvent(
                                     torrent,
                                     TorrentEvent::PieceEvent(piece, PieceEvent::Done),
@@ -328,7 +319,7 @@ impl<'a> Session<'a> {
 
 /// Announces a torrent
 async fn try_announce(tx: EventSender, peer_id: [u8; 20], torrent: TorrentPtr) {
-    let mut torrent_lock = torrent.lock().await;
+    let mut torrent_lock = torrent.write().await;
 
     let response = {
         let mut i = 0;
@@ -396,10 +387,6 @@ pub(crate) fn piece_size(piece: PieceID, meta_info: &MetaInfo) -> usize {
 }
 
 /// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
-fn verify_piece(piece: &[u8], hash: &[u8; 20]) -> bool {
-    hash == &<[u8; 20]>::try_from(Sha1::digest(piece).as_slice()).unwrap()
-}
-
 async fn async_verify(piece: Arc<Vec<u8>>, hash: &[u8; 20]) -> bool {
     // Use spawn_blocking because it is a CPU bound task
     hash == &tokio::task::spawn_blocking(move || {

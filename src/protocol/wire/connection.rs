@@ -54,18 +54,21 @@ impl Wire {
     /// Sends a message to the peer
     ///
     /// # Cancel safety
-    /// This method is not cancellation safe. If it is used as the event in a tokio::select statement and some other branch completes first, then the message may have been partially written, but future calls to send will start over from the beginning of the message.
+    /// This method IS NOT cancel safe
     pub async fn send(&mut self, message: Message) -> Result<()> {
-        self.send_raw(Vec::from(message).as_slice()).await
+        let buffer = Vec::from(message);
+
+        self.stream.write_u32(buffer.len() as u32).await?;
+        self.stream.write_all(&buffer).await?;
+
+        Ok(())
     }
 
     /// Receives a message from the peer
     ///
     /// # Cancel safety
-    /// This method is cancel safe. If you use it as the event in a tokio::select statement and some other branch completes first, then it is guaranteed that no data was read.
+    /// This method IS cancel safe
     pub async fn receive(&mut self) -> Result<Message> {
-        //let buf = Cursor::new(&self.buffer[..]);
-
         loop {
             if self.buffer.len() >= std::mem::size_of::<u32>() {
                 let message_size = u32::from_be_bytes(self.buffer[0..4].try_into().unwrap()) as usize;
@@ -82,9 +85,6 @@ impl Wire {
 
             if self.stream.read_buf(&mut self.buffer).await? == 0 {
                 // If read_buf returns zero it means the remote has closed the connection
-                // ConnectionReset - Remote closed connection unexpectedly
-                // UnexpectedEof - Remote closed connection while reading a message
-                // ConnectionAborted
 
                 return Err(WireError::Network(std::io::Error::from(
                     if self.buffer.is_empty() {
@@ -95,10 +95,12 @@ impl Wire {
                 )))
             }
         }
-
-        //Message::try_from(self.receive_raw().await?.as_slice())
     }
 
+    /// Exchanges a hanshake with the peer
+    ///
+    /// # Cancel safety
+    /// This method IS NOT cancel safe
     pub async fn handshake(&mut self, handshake: &Handshake) -> Result<Handshake> {
         self.send_handshake(handshake).await?;
         let peer_handshake = self.receive_handshake().await?;
@@ -110,29 +112,10 @@ impl Wire {
         }
     }
 
-    /// Sends data over the wire
-    #[deprecated = "not cancel safe"]
-    async fn send_raw(&mut self, buffer: &[u8]) -> Result<()> {
-        self.stream
-            .write_u32(buffer.len().try_into().unwrap())
-            .await?;
-        self.stream.write_all(buffer).await?;
-
-        Ok(())
-    }
-
-    /// Receives data over the wire
-    #[deprecated = "not cancel safe"]
-    async fn receive_raw(&mut self) -> Result<Vec<u8>> {
-        let length = self.stream.read_u32().await?;
-        let mut buffer = vec![0u8; length as usize];
-
-        self.stream.read_exact(&mut buffer).await?;
-
-        Ok(buffer)
-    }
-
     /// Receives handshake info from the peer
+    ///
+    /// # Cancel safety
+    /// This method IS NOT cancel safe
     async fn receive_handshake(&mut self) -> Result<Handshake> {
         let protocol_length = self.stream.read_u8().await?;
 
@@ -160,6 +143,9 @@ impl Wire {
     }
 
     /// Sends the handshake info to the peer
+    ///
+    /// # Cancel safety
+    /// This method IS NOT cancel safe
     async fn send_handshake(&mut self, handshake: &Handshake) -> Result<()> {
         // Length prefixed protocol name
         self.stream

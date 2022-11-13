@@ -8,12 +8,19 @@ use bittorrent::{
     protocol::metainfo::MetaInfo,
 };
 
-const TORRENT: &str = "torrents/debian-10.10.0-amd64-DVD-1.iso.torrent";
-//const TORRENT: &str = "torrents/[SubsPlease] Yofukashi no Uta - 12 (1080p) [6529938D].mkv.torrent";
+//const TORRENT: &str = "torrents/debian-10.10.0-amd64-DVD-1.iso.torrent";
+const TORRENT: &str = "torrents/[SubsPlease] Kage no Jitsuryokusha ni Naritakute! - 06 (1080p) [9E88E130].mkv.torrent";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    pretty_env_logger::init();
+    let _logger = flexi_logger::Logger::try_with_str("debug, bittorrent=trace").unwrap()
+        .log_to_file(flexi_logger::FileSpec::default().directory("logs"))
+        .write_mode(flexi_logger::WriteMode::BufferDontFlush)
+        .print_message()
+        .duplicate_to_stderr(flexi_logger::Duplicate::Info)
+        .format_for_files(flexi_logger::detailed_format)
+        .start()
+        .unwrap();
 
     let mut session = Session::new([b'x'; 20]);
 
@@ -26,31 +33,34 @@ async fn main() {
                 let torrent = torrent.clone();
 
                 tokio::spawn(async move {
-                    let (pending, downloading, done) = {
-                        let torrent = torrent.lock().await;
+                    let (pending, downloading, verifying, done, other) = {
+                        let torrent = torrent.read().await;
 
-                        let (mut pending, mut downloading, mut done) = (0, 0, 0);
+                        let (mut pending, mut downloading, mut verifying, mut done, mut other) = (0, 0, 0, 0, 0);
 
                         for piece in torrent.pieces.iter() {
                             match piece.state {
                                 State::Pending => pending += 1,
-                                State::Downloading
-                                | State::Downloaded
-                                | State::Verifying
-                                | State::Verified => downloading += 1,
+                                State::Downloading => downloading += 1,
+                                //| State::Downloaded
+                                | State::Verifying => verifying += 1,
+                                //| State::Verified => downloading += 1,
                                 State::Done => done += 1,
                                 State::Ignore => (),
+                                _ => other += 1
                             }
                         }
 
-                        (pending, downloading, done)
+                        (pending, downloading, verifying, done, other)
                     };
 
                     log::info!(
-                        "{:>4} PENDING | {:>4} DOWNLOADING | {:>4} DONE",
+                        "{:>4} PENDING  {:>2} DOWNLOADING  {:>2} VERIFYING  {:>4} DONE  {:>2} OTHER",
                         pending,
                         downloading,
-                        done
+                        verifying,
+                        done,
+                        other
                     );
                 });
             }

@@ -19,6 +19,7 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 ### Investigations
 * Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams
 * Investigate [tracing](https://lib.rs/crates/tracing) for better logging
+* Investigate using cargo-audit and cargo-deny to use secure libraries with correct licenses (see [rustsec](https://rustsec.org/))
 
 ### Features
 * Generic `StoreWriter` to write to the store more efficiently (buffered writes / write_vectored?)
@@ -37,8 +38,10 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Standardize more of the code
   * Piece ID and piece size
   * Change all incorrect instances of *length* into *size*
+* Look for ways to optimize away some mutexes/rwlocks
 * Implement std::fmt::Display for Event and remove dependency on [strum](https://lib.rs/crates/strum)
 * Find a nicer way to handle bytes, such as a trait to convert to/from bytes, as well as using `Bytes` instead of `Vec<u8>`?
+* Use [tokio::task::JoinSet](https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html) in Session to track the peer tasks
 
 ### Notes
 * Make sure all Worker in session.peers are alive
@@ -57,22 +60,22 @@ We want to weave all requests in one, so basically we have a thread that loops a
   * We have a peer worker where we spawn block download tasks. Each task has a broadcast receiver of messages received from the peer and a transmitter of blocks received.
 
 ### Current state
-Okay so basically `Block` is done and now we need to do:
-* Rewrite peer_worker
-  * ~~Use [algorithm](src/core/algorithm.rs) to select pieces~~
-  * ~~Note: Currently nothing happens after permit acquired - suspecting a deadlock~~
-    * ~~Log case 1 goes "loop iteration" -> "permit acquired"~~
-    * ~~Log case 2 goes "loop iteration" -> bitfield -> SendError(Bitfield(...))~~
-  * ~~1 - Select a piece with the torrent's Picker~~
-  * ~~2 - Get/create the download with the torrent~~
-  * ~~3 - Select a block with the torrent's Picker~~
-  * Update `piece.availability` when bitfield/have is received
-  * ~~Create a `PieceEvent::Block`~~
-    * ~~Maybe we should assemble the piece in [session](src/core/session.rs)?~~
-  * Find a way to receive when a block has been canceled
-    * I think passing a broadcast to all `get_block` instances is the best way to do this
-  * Are we removing PieceDownload when it is finished?
-  * Is there some way to wait instead of lagging when broadcasting messages? (Only do this after we know the code works)
+* ~~Use [algorithm](src/core/algorithm.rs) to select pieces~~
+* ~~Note: Currently nothing happens after permit acquired - suspecting a deadlock~~
+  * ~~Log case 1 goes "loop iteration" -> "permit acquired"~~
+  * ~~Log case 2 goes "loop iteration" -> bitfield -> SendError(Bitfield(...))~~
+* ~~1 - Select a piece with the torrent's Picker~~
+* ~~2 - Get/create the download with the torrent~~
+* ~~3 - Select a block with the torrent's Picker~~
+* ~~Are we removing PieceDownload when it is finished?~~
+* ~~Create a `PieceEvent::Block`~~
+  * ~~Maybe we should assemble the piece in [session](src/core/session.rs)?~~
+* Update `piece.availability` when bitfield/have is received
+* Enable endgame when all pieces are downloading
+* Find a way to receive when a block has been cancelled
+  * I think passing a broadcast to all `get_block` instances is the best way to do this
+* Does Picker need its own RwLock? Since it's always used with Torrent it means both will be locked simultaneously anyways
+* Is there some way to wait instead of lagging when broadcasting messages? (Only do this after we know the code works)
 
 ### Errors
 * ~~Why is `get_block` crashing? Investigate the [log](latest.log)~~
@@ -83,3 +86,12 @@ Okay so basically `Block` is done and now we need to do:
   * ~~Are we waiting for unchoke?~~
   * ~~Is the message receive getting canceled? Edit: YES, read_exact does not have cancellation safety.~~
   * ~~Use thiserror in metainfo.rs~~
+* Investigate the [log](logs/bittorrent_2022-11-12_23-11-22.log)
+  * ~~We also only see 15/16 pieces downloaded, why doesn't the last message show up?~~
+  * **The peer downloads one complete piece, then idles (doesn't exit)**
+  * Find a better way to retreive the next block
+    * (?) PickerIterator
+      * Maintains a piecedownload from select_piece and switches when select_block is None.
+      * Returns None when select_piece returns None
+* Perhaps it slows down over time because we are hogging up tasks by returning a value that is never joined?
+  * Find out if we need to join tokio tasks or not

@@ -62,6 +62,11 @@ impl Bitfield {
     pub fn len(&self) -> usize {
         self.length
     }
+
+    /// Returns true if the bitfield is empty
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
 }
 
 pub struct BitfieldIterator<'a> {

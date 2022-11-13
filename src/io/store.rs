@@ -128,7 +128,7 @@ impl Store for FileStore {
         while remaining_bytes > 0 {
             // Index of the byte we are writing
             let index = piece * self.piece_length + data.len() - remaining_bytes;
-            let file_index = self.file_of_byte(index).expect(&format!("Failed to set piece {}. Byte is out of bounds ({} >= {})", piece, index, self.size()));
+            let file_index = self.file_of_byte(index).unwrap_or_else(|| panic!("Failed to set piece {}. Byte is out of bounds ({} >= {})", piece, index, self.size()));
             let (begin, end) = self.file_bytes(file_index);
 
             let bytes_to_write = (end - index).min(remaining_bytes);
@@ -148,7 +148,7 @@ impl Store for FileStore {
     fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
         let mut data = Vec::with_capacity(self.piece_length);
 
-        if self.has_pieces[piece] == false {
+        if !self.has_pieces[piece] {
             return Ok(None);
         }
 

@@ -1,4 +1,5 @@
 /target
 /downloads
 /torrents
+/logs
 *.log
