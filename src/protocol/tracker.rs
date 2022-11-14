@@ -1,3 +1,34 @@
+//! BitTorrent tracker implementation
+//!
+//! The tracker keeps track of which peers are able to provide which pieces of a torrent
+//!
+//! A tracker announce sends event to the tracker and receives a list of possible peers to connect to
+//!
+//! # Examples
+//!
+//! ```rust,no_run
+//! use bittorrent::protocol::tracker::{Announce, Event, Tracker};
+//!
+//! #[tokio::main(flavor = "current_thread")]
+//! async fn main() {
+//!     let tracker = Tracker::new("https://example-tracker.com/announce");
+//!     let announce = Announce {
+//!         info_hash: [0; 20], // In reality, this MUST be a valid info hash
+//!         peer_id: [b'x'; 20],
+//!         ip: None,
+//!         port: 8000,
+//!         uploaded: 0,
+//!         downloaded: 0,
+//!         left: 0,
+//!         event: Some(Event::Started)
+//!     };
+//!
+//!     let response = tracker.announce().await;
+//!
+//!     println!("{:#?}", response);
+//! }
+//! ```
+
 use std::{
     convert::TryFrom,
     net::{Ipv4Addr, SocketAddrV4},
@@ -27,26 +58,48 @@ pub enum Event {
     Stopped,
 }
 
+/// Announce message sent to the tracker to broadcast events and receive a list of possible peers to establish a connection with
 #[derive(Debug)]
 pub struct Announce {
+    /// Info hash of the torrent being announced
     pub info_hash: [u8; 20],
+    /// Peer id of the client
     pub peer_id: [u8; 20],
+    /// Optional IP address of the client, otherwise assumed to be the IP address from which the request came
     pub ip: Option<std::net::Ipv4Addr>,
+    /// Port the client is listening on, typically in the range 6881-6889
     pub port: u16,
+    /// Total amount of bytes uploaded since the client sent [`Event::Started`] to the tracker
     pub uploaded: usize,
+    /// Total amount of bytes downloaded since the client sent [`Event::Started`] to the tracker
     pub downloaded: usize,
+    /// Total amount of bytes the client has left to download until all of the torrent's pieces are downloaded
     pub left: usize,
+    /// Event sent to the tracker
+    ///
+    /// Must be one of
+    /// * [Event::Started] on the first announce sent to the tracker
+    /// * [Event::Stopped] when the client is shutting down
+    /// * [Event::Completed] when all of the pieces of a torrent have been downloaded
+    /// or [None] if it is an event-less request informing the tracker of the client's progress and updating the peer list
     pub event: Option<Event>,
 }
 
+/// BitTorrent tracker
 #[derive(Debug)]
 pub struct Tracker {
+    /// HTTP client used to send requests
     client: reqwest::Client,
+    /// URL to send the announce request to
     announce_url: String,
+    /// Optional field containing the time and response of last announce that was sent to the tracker
     last_announce: Option<(Instant, Response)>,
 }
 
 impl Tracker {
+    /// Creates a new tracker instance
+    ///
+    /// Calling this function does not establish a connection with the tracker
     pub fn new(announce: &str) -> Self {
         Tracker {
             client: reqwest::Client::new(),
@@ -55,7 +108,7 @@ impl Tracker {
         }
     }
 
-    /// Send an announce to the tracker
+    /// Send an announce request to the tracker
     pub async fn announce(&mut self, announce: &Announce) -> Result<Response> {
         // let peer_id = announce.peer_id.iter().collect::<String>().into_bytes();
 
@@ -132,6 +185,7 @@ impl Tracker {
         response
     }
 
+    /// Returns the URL announce requests are sent to
     pub fn announce_url(&self) -> &str {
         &self.announce_url
     }
@@ -139,7 +193,9 @@ impl Tracker {
 
 #[derive(Debug, Clone)]
 pub struct Response {
+    /// Interval in seconds the client SHOULD wait between sending event-less requests to the tracker
     pub interval: usize,
+    /// List of peers the client MAY connect to
     pub peers_addrs: Vec<std::net::SocketAddrV4>,
 }
 

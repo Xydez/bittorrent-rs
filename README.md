@@ -2,7 +2,7 @@
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 
 ## Reading material
-* [Inofficial BitTorrent specification](https://wiki.theory.org/index.php/BitTorrentSpecification)
+* [Inofficial BitTorrent specification](https://wiki.theory.org/BitTorrentSpecification)
 * https://blog.jse.li/posts/torrent/
 * https://en.wikipedia.org/wiki/Torrent_file
 * https://www.bittorrent.org/beps/bep_0003.html
@@ -50,7 +50,10 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * It might be a good idea to let multiple peers work on the same piece normally
   * We could change the PieceIterator to no longer have a "current download" and just check the ongoing `torrent.downloads` before calling the picker.
   * This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways
-* Rename maybe_blocks to the inverse "out_of_blocks" or something which is clearer
+* Rename maybe_blocks in worker to "out_of_blocks" or something which is clearer
+* Don't connect to all peers received in Announce (See inofficial spec)
+  * Only actively form connections if client has less than 30 peers
+  * Refuse connections after client has a maximum of 55 peers
 
 ### Notes
 * Make sure all Worker in session.peers are alive
