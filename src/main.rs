@@ -5,11 +5,12 @@ use bittorrent::{
         session::Session,
     },
     io::store::FileStore,
-    protocol::metainfo::MetaInfo,
+    protocol::metainfo::MetaInfo
 };
 
 //const TORRENT: &str = "torrents/debian-10.10.0-amd64-DVD-1.iso.torrent";
 const TORRENT: &str = "torrents/[SubsPlease] Kage no Jitsuryokusha ni Naritakute! - 06 (1080p) [9E88E130].mkv.torrent";
+const DOWNLOAD_DIR: &str = "downloads";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -29,6 +30,20 @@ async fn main() {
 
         #[allow(clippy::single_match)]
         match event {
+            Event::Started => {
+                let meta_info = MetaInfo::load(TORRENT).unwrap();
+                std::fs::create_dir_all(DOWNLOAD_DIR).unwrap();
+                let store = FileStore::new(
+                    meta_info.piece_size,
+                    meta_info.files
+                        .iter()
+                        .map(|file| (file.length, std::path::Path::new(DOWNLOAD_DIR).join(&file.path)))
+                        .collect::<Vec<_>>()
+                )
+                .unwrap();
+
+                session.add(meta_info, Box::new(store));
+            },
             Event::TorrentEvent(torrent, TorrentEvent::PieceEvent(_piece, PieceEvent::Done)) => {
                 let torrent = torrent.clone();
 
@@ -69,19 +84,6 @@ async fn main() {
         }
     });
 
-    let meta_info = MetaInfo::load(TORRENT).unwrap();
-
-    std::fs::create_dir_all("./downloads/").unwrap();
-    let store = FileStore::new(
-        meta_info.piece_size,
-        meta_info.files
-            .iter()
-            .map(|file| (file.length, std::path::Path::new("./downloads/").join(&file.path)))
-            .collect::<Vec<_>>()
-    )
-    .unwrap();
-
-    session.add(meta_info, Box::new(store));
 
     session.start().await;
 }

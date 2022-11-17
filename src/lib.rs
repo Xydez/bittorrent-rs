@@ -10,9 +10,9 @@
 //! # Example
 //! ```rust,no_run
 //! use bittorrent::{
-//! 	core::session::Session,
-//! 	protocol::metainfo::MetaInfo,
-//! 	io::store::FileStore
+//!     core::session::Session,
+//!     protocol::metainfo::MetaInfo,
+//!     io::store::FileStore
 //! };
 //!
 //! #[tokio::main(flavor = "current_thread")]

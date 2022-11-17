@@ -1,24 +1,22 @@
 use std::sync::Arc;
 
-use strum::AsRefStr;
-
 use crate::protocol::tracker;
 
 use super::session::{TorrentPtr, PieceID};
 
-// TODO: Make `Event` print properly
-
 /// Events for a session
-#[derive(Debug, AsRefStr)]
+#[derive(Debug)]
 pub enum Event {
-    /// Session is shutting down
-    Shutdown,
+    /// Session is starting
+    Started,
+    /// Session is stopping
+    Stopped,
     /// Event for a torrent in the session
     TorrentEvent(TorrentPtr, TorrentEvent),
 }
 
 /// Events for a torrent
-#[derive(Debug, AsRefStr)]
+#[derive(Debug)]
 pub enum TorrentEvent {
     /// Torrent added to the session
     Added,
@@ -31,7 +29,7 @@ pub enum TorrentEvent {
 }
 
 /// Events for individual pieces of a torrent
-#[derive(Debug, AsRefStr)]
+#[derive(Debug)]
 pub enum PieceEvent {
     Block(usize),
 

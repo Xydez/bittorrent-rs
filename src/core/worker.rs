@@ -105,7 +105,7 @@ pub fn spawn(
 
         // Keeps track of the current piece download
         let mut picker_iter = PieceIterator::default();
-        let mut get_block_tasks = tokio::task::JoinSet::new();
+        let mut block_tasks = tokio::task::JoinSet::new();
 
         // True if we need to check whether there are downloadable blocks in the current download
         // False until we receive a bitfield from the peer
@@ -182,7 +182,7 @@ pub fn spawn(
                     download.lock().await.blocks[block].state = block::State::Downloading;
 
                     log::trace!("[{pid}] starting get_block");
-                    get_block_tasks.spawn(
+                    block_tasks.spawn(
                         get_block(
                             pid.clone(),
                             permit.unwrap(),
@@ -195,7 +195,7 @@ pub fn spawn(
                     );
                 },
                 // Receive the data from completed get_block tasks
-                Some(result) = get_block_tasks.join_next(), if !get_block_tasks.is_empty() => match result {
+                Some(result) = block_tasks.join_next(), if !block_tasks.is_empty() => match result {
                     Err(err) => panic!("get_block panicked: {}", err),
                     Ok((piece, block, result)) => {
                         let piece_download = torrent.read().await.downloads[&piece].clone();

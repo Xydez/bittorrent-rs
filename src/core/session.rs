@@ -82,22 +82,29 @@ impl<'a> Session<'a> {
     }
 
     /// Adds a torrent to the session
-    pub fn add(&mut self, meta_info: MetaInfo, store: Box<dyn Store>) {
+    pub fn add(&self, meta_info: MetaInfo, store: Box<dyn Store>) {
         let torrent = Arc::new(RwLock::new(Torrent::new(meta_info, store)));
-
-        self.torrents.push(torrent.clone());
 
         self.tx
             .send(Event::TorrentEvent(torrent, TorrentEvent::Added))
-            .expect("Cannot add torrent because channel is closed");
+            .unwrap();
     }
 
     /// Starts the event loop of the session
     pub async fn start(&mut self) {
         while let Some(event) = self.rx.recv().await {
             match &event {
+                Event::Started => {
+                    log::info!("Event::Started");
+                }
+                Event::Stopped => {
+                    log::info!("Event::Stopped");
+                }
                 Event::TorrentEvent(torrent, event) => match event {
                     TorrentEvent::Added => {
+                        // The only source of the torrent added event is from session.add which does not have &mut self
+                        self.torrents.push(torrent.clone());
+
                         log::info!(
                             "TorrentEvent::Added {}",
                             util::hex(&torrent.read().await.meta_info.info_hash)
@@ -305,25 +312,25 @@ impl<'a> Session<'a> {
                         log::info!("Torrent {} is done.", torrent.read().await.meta_info.name);
                     },
                 },
-                Event::Shutdown => {
-                    log::info!("Event::Shutdown");
-                    break;
-                }
             }
 
             // Inform the listeners of the event
             for listener in &self.listeners {
                 listener(self, &event);
             }
+
+            // Stop the event loop if the session has stopped
+            if matches!(event, Event::Stopped) {
+                break;
+            }
         }
     }
 
-    /// Stops the session
+    /// Initiates a shutdown of the session
     pub fn shutdown(&self) {
-        self.tx.send(Event::Shutdown).unwrap();
+        self.tx.send(Event::Stopped).unwrap();
         // TODO: We should make this async and join all handlers and stuff
         // TODO: Check if we are even running (if the event loop is running)
-        // TODO: `&self` should maybe be `&mut self`?
     }
 }
 
