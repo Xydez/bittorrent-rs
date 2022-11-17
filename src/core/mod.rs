@@ -1,6 +1,7 @@
 pub mod algorithm;
 pub mod bitfield;
 pub mod block;
+pub mod configuration;
 pub mod event;
 pub mod peer;
 pub mod piece;

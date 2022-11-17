@@ -26,7 +26,7 @@ async fn main() {
 	.start()
 	.unwrap();
 
-	let mut session = Session::new([b'x'; 20]);
+	let mut session = Session::new();
 
 	session.add_listener(|session: &Session, event: &Event| {
         // log::info!("[event] {:#?}", event.as_ref());

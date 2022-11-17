@@ -1,6 +1,7 @@
-use crate::core::session::BLOCK_SIZE;
-
-use super::block::{self, Block};
+use super::{
+	block::{self, Block},
+	configuration::Configuration
+};
 
 #[derive(Debug, Clone)]
 pub struct PieceDownload {
@@ -10,13 +11,13 @@ pub struct PieceDownload {
 
 // TODO: Maybe rename to something cooler, like Job or something
 impl PieceDownload {
-	pub fn new(piece_size: usize) -> PieceDownload {
+	pub fn new(config: &Configuration, piece_size: usize) -> PieceDownload {
 		let blocks = (0..piece_size)
-			.step_by(BLOCK_SIZE as usize)
+			.step_by(config.block_size as usize)
 			.map(|i| Block {
 				state: block::State::Pending,
 				begin: i as u32,
-				size: (piece_size as u32 - i as u32).min(BLOCK_SIZE)
+				size: (piece_size as u32 - i as u32).min(config.block_size)
 			})
 			.collect::<Vec<_>>();
 

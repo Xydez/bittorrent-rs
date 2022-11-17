@@ -15,6 +15,7 @@ use crate::{
 
 use super::{
 	bitfield::Bitfield,
+	configuration::Configuration,
 	event::{PieceEvent, TorrentEvent},
 	piece,
 	piece_download::PieceDownload,
@@ -33,25 +34,9 @@ pub type PieceDownloadPtr = Arc<Mutex<PieceDownload>>;
 
 pub trait EventCallback = Fn(&Session, &Event);
 
-/* Application constants */
-
-/// Timeout when attempting to connect to a peer
-pub const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f64(8.0);
-
-/// Sever the connection if the peer doesn't send a message within this duration. This amount of time is generally 2 minutes.
-pub const ALIVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs_f64(120.0);
-
-/// Size of a block. 16 KiB is the maximum permitted by the spec.
-pub const BLOCK_SIZE: u32 = 16_384;
-
-/// The maximum amount of concurrent requests that can be sent to a peer (normally 5)
-pub const BLOCK_CONCURRENT_REQUESTS: usize = 5;
-
-/// The maximum number of active piece verification jobs
-pub const VERIFICATION_WORKERS: usize = 4;
-
 pub struct Session<'a> {
-	pub peer_id: [u8; 20],
+	//pub peer_id: [u8; 20],
+	config: Arc<Configuration>,
 	pub torrents: Vec<TorrentPtr>,
 	listeners: Vec<Box<dyn EventCallback + 'a>>,
 	// TODO: Separate channel for sending a clone of the Event to the user
@@ -62,17 +47,24 @@ pub struct Session<'a> {
 }
 
 impl<'a> Session<'a> {
-	/// Constructs a new session with the specified peer id
-	pub fn new(peer_id: [u8; 20]) -> Session<'a> {
+	/// Constructs a new session with the specified peer id and the default configuration
+	pub fn new() -> Session<'a> {
+		Session::with_config(Configuration::default())
+	}
+
+	pub fn with_config(config: Configuration) -> Session<'a> {
+		let config = Arc::new(config);
+		let verification_semaphore = Arc::new(Semaphore::new(config.verification_jobs));
+
 		let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
 		Session {
-			peer_id,
-			torrents: Vec::new(),
-			listeners: Vec::new(),
+			config,
 			tx,
 			rx,
-			verification_semaphore: Arc::new(Semaphore::new(VERIFICATION_WORKERS))
+			verification_semaphore,
+			torrents: Vec::new(),
+			listeners: Vec::new()
 		}
 	}
 
@@ -110,7 +102,11 @@ impl<'a> Session<'a> {
 							util::hex(&torrent.read().await.meta_info.info_hash)
 						);
 
-						tokio::spawn(try_announce(self.tx.clone(), self.peer_id, torrent.clone()));
+						tokio::spawn(try_announce(
+							self.tx.clone(),
+							self.config.peer_id,
+							torrent.clone()
+						));
 					},
 					TorrentEvent::Announced(response) => {
 						log::info!(
@@ -120,7 +116,7 @@ impl<'a> Session<'a> {
 
 						let torrent = torrent.clone();
 
-						let peer_id = self.peer_id;
+						let peer_id = self.config.peer_id;
 						let info_hash = torrent.read().await.meta_info.info_hash;
 
 						// Add all peers to the torrent
@@ -128,10 +124,12 @@ impl<'a> Session<'a> {
 							let torrent = torrent.clone();
 							let tx = self.tx.clone();
 
+							let config = self.config.clone();
+
 							// TODO: Use a tokio::task::JoinSet instead
 							tokio::spawn(async move {
 								let mut peer = match tokio::time::timeout(
-									CONNECT_TIMEOUT,
+									config.connect_timeout,
 									Peer::connect(
 										addr,
 										wire::Handshake {
@@ -197,8 +195,13 @@ impl<'a> Session<'a> {
 										seed: false
 									});
 
-									let task =
-										worker::spawn(torrent.clone(), peer.clone(), tx, mode_rx);
+									let task = worker::spawn(
+										config,
+										torrent.clone(),
+										peer.clone(),
+										tx,
+										mode_rx
+									);
 
 									torrent.write().await.peers.push(worker::Worker {
 										mode_tx,
@@ -337,6 +340,12 @@ impl<'a> Session<'a> {
 		self.tx.send(Event::Stopped).unwrap();
 		// TODO: We should make this async and join all handlers and stuff
 		// TODO: Check if we are even running (if the event loop is running)
+	}
+}
+
+impl<'a> Default for Session<'a> {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 

@@ -6,11 +6,12 @@ use tokio::sync::Mutex;
 use crate::{
 	core::{
 		block,
+		configuration::Configuration,
 		event::{Event, PieceEvent, TorrentEvent},
 		peer::{Peer, PeerError},
 		piece,
 		piece_download::PieceDownload,
-		session::{self, EventSender, PeerPtr, PieceID, TorrentPtr, BLOCK_CONCURRENT_REQUESTS},
+		session::{self, EventSender, PeerPtr, PieceID, TorrentPtr},
 		torrent::Torrent,
 		util
 	},
@@ -55,6 +56,7 @@ impl PieceIterator {
 	//       having the peer constantly locked in spawn
 	pub async fn take(
 		&mut self,
+		config: &Configuration,
 		torrent: &mut Torrent,
 		peer: &Peer
 	) -> Option<(Arc<Mutex<PieceDownload>>, PieceID, usize)> {
@@ -73,7 +75,9 @@ impl PieceIterator {
 					torrent
 						.downloads
 						.entry(piece)
-						.or_insert_with(|| Arc::new(Mutex::new(PieceDownload::new(piece_size))))
+						.or_insert_with(|| {
+							Arc::new(Mutex::new(PieceDownload::new(config, piece_size)))
+						})
 						.clone()
 				)
 			});
@@ -94,6 +98,7 @@ impl PieceIterator {
 }
 
 pub fn spawn(
+	config: Arc<Configuration>,
 	torrent: TorrentPtr,
 	peer: PeerPtr,
 	event_tx: EventSender,
@@ -109,7 +114,9 @@ pub fn spawn(
 		let mut peer = peer.lock().await; // TODO: What is the point of having a mutex if the peer is constantly locked?
 		let pid = peer.peer_id_short();
 
-		let block_semaphore = Arc::new(tokio::sync::Semaphore::new(BLOCK_CONCURRENT_REQUESTS));
+		let block_semaphore = Arc::new(tokio::sync::Semaphore::new(
+			config.concurrent_block_downloads
+		));
 
 		// Keeps track of the current piece download
 		let mut picker_iter = PieceIterator::default();
@@ -181,7 +188,7 @@ pub fn spawn(
 				permit = block_semaphore.clone().acquire_owned(), if !peer.peer_choking() && mode_rx.borrow().download && maybe_blocks => {
 					log::trace!("[{pid}] permit acquired");
 
-					let Some((download, piece, block)) = picker_iter.take(&mut *torrent.write().await, &peer).await else {
+					let Some((download, piece, block)) = picker_iter.take(&config, &mut *torrent.write().await, &peer).await else {
 						log::trace!("[{pid}] no blocks to download");
 						maybe_blocks = false;
 						continue;

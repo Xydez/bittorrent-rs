@@ -23,11 +23,11 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Investigate using cargo-audit and cargo-deny to use secure libraries with correct licenses (see [rustsec](https://rustsec.org/))
 
 ### Features
+* ~~Add a new `Settings` struct~~ See [configuration](src/core/configuration.rs)
 * Generic `StoreWriter` to write to the store more efficiently (buffered writes / write_vectored?)
   * Unix: Use `pwritev` in [*nix](https://lib.rs/crates/nix)
 * Magnet links
 * Allow requesting specific byte ranges from the torrent, and the client will prioritize those pieces
-* Add a new `Settings` struct
 * Write and use [peer_id](src/protocol/peer_id.rs)
 * Resuming downloads
   * Keep resume data in a file beside the torrent (<torrent_name>.resume)
