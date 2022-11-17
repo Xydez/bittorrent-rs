@@ -1,11 +1,9 @@
 use bittorrent::{
 	core::{
 		event::{Event, PieceEvent, TorrentEvent},
-		piece::State,
-		session::Session
+		piece::State
 	},
-	io::store::FileStore,
-	protocol::metainfo::MetaInfo
+	prelude::*
 };
 
 //const TORRENT: &str = "torrents/debian-10.10.0-amd64-DVD-1.iso.torrent";
