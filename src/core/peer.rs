@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use thiserror::Error;
 
 use crate::{
@@ -5,7 +7,7 @@ use crate::{
 	protocol::wire::{Handshake, Message, Wire, WireError}
 };
 
-use super::{session::PieceID, util};
+use super::{configuration::Configuration, session::PieceID, util};
 
 #[derive(Error, Debug)]
 pub enum PeerError {
@@ -18,6 +20,7 @@ pub(crate) type Result<T> = std::result::Result<T, PeerError>;
 /// Abstraction of Wire that maintains peer state
 #[derive(Debug)]
 pub struct Peer {
+	config: Arc<Configuration>,
 	wire: Wire,
 	peer_id: [u8; 20],
 
@@ -36,24 +39,33 @@ pub struct Peer {
 	peer_interested: bool,
 
 	/// The pieces the peer is currently serving
-	peer_pieces: Option<Bitfield>
+	peer_pieces: Option<Bitfield>,
+
+	/// When the last message was sent by the client; in order to track keep alive messages
+	last_message_sent: tokio::time::Instant
 }
 
 impl Peer {
 	pub async fn connect<T: tokio::net::ToSocketAddrs>(
+		config: Arc<Configuration>,
 		addr: T,
 		handshake: Handshake
 	) -> Result<Peer> {
-		Peer::new(Wire::connect(addr).await?, handshake).await
+		Peer::new(config, Wire::connect(addr).await?, handshake).await
 	}
 
 	/// Connects to a peer and sends a handshake
-	pub async fn new(mut wire: Wire, handshake: Handshake) -> Result<Peer> {
+	pub async fn new(
+		config: Arc<Configuration>,
+		mut wire: Wire,
+		handshake: Handshake
+	) -> Result<Peer> {
 		let peer_handshake = wire.handshake(&handshake).await?;
 
 		// TODO: If the initiator of the connection receives a handshake in which the peer_id does not match the expected peer_id, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
 
 		Ok(Peer {
+			config,
 			wire,
 			peer_id: peer_handshake.peer_id,
 			extensions: peer_handshake.extensions,
@@ -61,12 +73,15 @@ impl Peer {
 			am_interested: false,
 			peer_choking: true,
 			peer_interested: false,
-			peer_pieces: None
+			peer_pieces: None,
+			last_message_sent: tokio::time::Instant::now()
 		})
 	}
 
 	/// Send a message
 	pub async fn send(&mut self, message: Message) -> Result<()> {
+		self.last_message_sent = tokio::time::Instant::now();
+
 		match message {
 			Message::Choke => self.am_choking = true,
 			Message::Unchoke => self.am_choking = false,
@@ -121,6 +136,10 @@ impl Peer {
 
 	pub fn peer_interested(&self) -> bool {
 		self.peer_interested
+	}
+
+	pub fn last_message_sent(&self) -> tokio::time::Instant {
+		self.last_message_sent
 	}
 
 	pub fn has_piece(&self, i: PieceID) -> bool {

@@ -1,4 +1,5 @@
 /// Configuration of the session
+#[derive(Debug)]
 pub struct Configuration {
 	/// Timeout when attempting to connect to a peer
 	pub connect_timeout: std::time::Duration,

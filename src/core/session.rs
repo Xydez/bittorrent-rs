@@ -84,6 +84,8 @@ impl<'a> Session<'a> {
 
 	/// Starts the event loop of the session
 	pub async fn start(&mut self) {
+		self.tx.send(Event::Started).unwrap();
+
 		while let Some(event) = self.rx.recv().await {
 			match &event {
 				Event::Started => {
@@ -131,6 +133,7 @@ impl<'a> Session<'a> {
 								let mut peer = match tokio::time::timeout(
 									config.connect_timeout,
 									Peer::connect(
+										config.clone(),
 										addr,
 										wire::Handshake {
 											extensions: [0; 8],

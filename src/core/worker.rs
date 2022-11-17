@@ -144,13 +144,15 @@ pub fn spawn(
 		}
 
 		loop {
+			let last_message_sent = peer.last_message_sent();
+
 			tokio::select! {
 				// Forward messages from message_send
 				message = message_send_rx.recv() => {
 					let message = message.unwrap();
 
 					log::trace!("[{pid}] forwarding message from block task {}", message);
-					peer.send(message).await.unwrap();
+					peer.send(message).await?;
 				},
 				// Forward messages to message_recv
 				message = peer.receive() => {
@@ -184,6 +186,10 @@ pub fn spawn(
 						log::trace!("[{pid}] no message receivers");
 					}
 				},
+				// Keep the peer connection alive
+				_ = tokio::time::sleep_until(last_message_sent + config.alive_timeout) => {
+					peer.send(Message::KeepAlive).await?;
+				}
 				// If downloading is enabled, we are unchoked and there are blocks available, download them
 				permit = block_semaphore.clone().acquire_owned(), if !peer.peer_choking() && mode_rx.borrow().download && maybe_blocks => {
 					log::trace!("[{pid}] permit acquired");

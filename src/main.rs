@@ -58,9 +58,7 @@ async fn main() {
                             match piece.state {
                                 State::Pending => pending += 1,
                                 State::Downloading => downloading += 1,
-                                //| State::Downloaded
-                                | State::Verifying => verifying += 1,
-                                //| State::Verified => downloading += 1,
+                                State::Verifying => verifying += 1,
                                 State::Done => done += 1,
                                 State::Ignore => (),
                                 _ => other += 1

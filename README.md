@@ -37,16 +37,17 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * ~~We should wait until a torrent added message or something like that in the peer threads instead of sleeping~~
 * ~~Use [thiserror](https://lib.rs/crates/thiserror) to write better errors~~
 * ~~Implement std::fmt::Display for Message so it prints nicer in the console - currently prints large chunks of binary data~~
+* ~~Implement std::fmt::Display for Event and remove dependency on [strum](https://lib.rs/crates/strum)~~
 * Store extensions as an extensions struct
 * Create a `verification_worker.rs` that handles verifying pieces
 * Standardize more of the code
   * Piece ID and piece size
   * Change all incorrect instances of *length* into *size*
 * Look for ways to optimize away some mutexes/rwlocks
-* Implement std::fmt::Display for Event and remove dependency on [strum](https://lib.rs/crates/strum)
 * Find a nicer way to handle bytes, such as a trait to convert to/from bytes, as well as using `Bytes` instead of `Vec<u8>`?
   * The current way works just fine, though?
 * Use [tokio::task::JoinSet](https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html) in Session to track the peer tasks
+* It doesn't make sense for the `Worker` struct to be defined in `worker.rs` but used only in `session.rs`
 * It might be a good idea to let multiple peers work on the same piece normally
   * We could change the PieceIterator to no longer have a "current download" and just check the ongoing `torrent.downloads` before calling the picker.
   * This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways
@@ -54,13 +55,14 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Don't connect to all peers received in Announce (See inofficial spec)
   * Only actively form connections if client has less than 30 peers
   * Refuse connections after client has a maximum of 55 peers
+  * PeerConnected messages
 
 ### Notes
+* ~~Add a condition in worker to send KeepAlive messages every 120 seconds~~
 * Make sure all Worker in session.peers are alive
   * Remember to join the tasks
 * Make sure piece.availability is updated
 * Always send a `bittorrent::wire::Message::Cancel` when the peer worker shuts down
-* Add a condition in worker to send KeepAlive messages every 120 seconds
 * Announce started/completed/stopped to tracker
 
 ## Active projects
@@ -108,3 +110,5 @@ We want to weave all requests in one, so basically we have a thread that loops a
 * ~~We are seeing `BLOCK IS NONE` in the log after which pieces stop being requested, but is this really true?~~
   * ~~Suspecting the fault might actually be in `select_piece` though - just intuition~~
   * ~~My thought is that it's giving us a dogshit piece~~
+* Fix this warning
+  * `WARN [bittorrent::core::session] download for piece 1291 block 15 not found, block downloaded in vain`
