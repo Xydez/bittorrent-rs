@@ -1,11 +1,11 @@
 use bittorrent::{
-    core::{
-        event::{Event, PieceEvent, TorrentEvent},
-        piece::State,
-        session::Session,
-    },
-    io::store::FileStore,
-    protocol::metainfo::MetaInfo
+	core::{
+		event::{Event, PieceEvent, TorrentEvent},
+		piece::State,
+		session::Session
+	},
+	io::store::FileStore,
+	protocol::metainfo::MetaInfo
 };
 
 //const TORRENT: &str = "torrents/debian-10.10.0-amd64-DVD-1.iso.torrent";
@@ -14,18 +14,21 @@ const DOWNLOAD_DIR: &str = "downloads";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let _logger = flexi_logger::Logger::try_with_str("debug, bittorrent=trace, bittorrent::core::worker=debug").unwrap()
-        .log_to_file(flexi_logger::FileSpec::default().directory("logs"))
-        .write_mode(flexi_logger::WriteMode::BufferDontFlush)
-        .print_message()
-        .duplicate_to_stderr(flexi_logger::Duplicate::Info)
-        .format_for_files(flexi_logger::detailed_format)
-        .start()
-        .unwrap();
+	let _logger = flexi_logger::Logger::try_with_str(
+		"debug, bittorrent=trace, bittorrent::core::worker=debug"
+	)
+	.unwrap()
+	.log_to_file(flexi_logger::FileSpec::default().directory("logs"))
+	.write_mode(flexi_logger::WriteMode::BufferDontFlush)
+	.print_message()
+	.duplicate_to_stderr(flexi_logger::Duplicate::Info)
+	.format_for_files(flexi_logger::detailed_format)
+	.start()
+	.unwrap();
 
-    let mut session = Session::new([b'x'; 20]);
+	let mut session = Session::new([b'x'; 20]);
 
-    session.add_listener(|session: &Session, event: &Event| {
+	session.add_listener(|session: &Session, event: &Event| {
         // log::info!("[event] {:#?}", event.as_ref());
 
         #[allow(clippy::single_match)]
@@ -84,6 +87,5 @@ async fn main() {
         }
     });
 
-
-    session.start().await;
+	session.start().await;
 }
