@@ -7,7 +7,7 @@ pub struct Configuration {
 	pub alive_timeout: std::time::Duration,
 	/// Size of a block. 16 KiB is the maximum permitted by the spec. Almost always 16 KiB.
 	pub block_size: u32,
-	/// The maximum amount of concurrent block downloads for a peer. Generally 5 downloads.
+	/// The maximum amount of concurrent block downloads for a peer. Generally around 5-10 block downloads.
 	pub concurrent_block_downloads: usize,
 	/// The maximum number of active piece verification jobs. Should be set to the `number of cores - 1` for optimal performance
 	pub verification_jobs: usize,
@@ -18,11 +18,11 @@ pub struct Configuration {
 impl Default for Configuration {
 	fn default() -> Configuration {
 		Configuration {
-			connect_timeout: std::time::Duration::from_secs_f64(8.0),
+			connect_timeout: std::time::Duration::from_secs_f64(10.0),
 			alive_timeout: std::time::Duration::from_secs_f64(120.0),
 			block_size: 16_384,
-			concurrent_block_downloads: 5,
-			verification_jobs: 4,
+			concurrent_block_downloads: 10,
+			verification_jobs: 8,
 			// TODO: Change to something sensible. Apparently some clients close the connection if they can't parse the peer id. Should use Azureus style.
 			peer_id: [b'x'; 20]
 		}

@@ -78,7 +78,7 @@ async fn main() {
                     );
                 });
             }
-            Event::TorrentEvent(_torrent, TorrentEvent::Done) => session.shutdown(),
+            Event::TorrentEvent(_torrent, TorrentEvent::Done) => session.stop(),
             _ => (),
         }
     });

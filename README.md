@@ -1,6 +1,13 @@
 # bittorrent-rs
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html)
 
+## Terminology
+* *peer* - BitTorrent instance that downloads and seeds torrents
+* *client* - The locally running BitTorrent instance. The *client* is by definiton also a *peer*.
+* *torrent* - Complete file or files as described in a metainfo file
+* *piece* - Part of a torrent that is described in the metainfo file and can be verified by a SHA1 hash
+* *block* - Segment of a piece that a *client* may request from a *peer*
+
 ## Reading material
 * [Inofficial BitTorrent specification](https://wiki.theory.org/BitTorrentSpecification)
 * https://blog.jse.li/posts/torrent/

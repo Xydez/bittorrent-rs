@@ -35,23 +35,24 @@ pub type PieceDownloadPtr = Arc<Mutex<PieceDownload>>;
 pub trait EventCallback = Fn(&Session, &Event);
 
 pub struct Session<'a> {
-	//pub peer_id: [u8; 20],
+	torrents: Vec<TorrentPtr>,
 	config: Arc<Configuration>,
-	pub torrents: Vec<TorrentPtr>,
 	listeners: Vec<Box<dyn EventCallback + 'a>>,
-	// TODO: Separate channel for sending a clone of the Event to the user
+	/// Transmits events to the event loop
 	tx: EventSender,
+	/// Receives events within the event loop
 	rx: EventReceiver,
 	/// Semaphore to track the number of pieces that can be verified at the same time
 	verification_semaphore: Arc<Semaphore>
 }
 
 impl<'a> Session<'a> {
-	/// Constructs a new session with the specified peer id and the default configuration
+	/// Constructs a session with the default configuration
 	pub fn new() -> Session<'a> {
 		Session::with_config(Configuration::default())
 	}
 
+	/// Constructs a session with the provided configuration
 	pub fn with_config(config: Configuration) -> Session<'a> {
 		let config = Arc::new(config);
 		let verification_semaphore = Arc::new(Semaphore::new(config.verification_jobs));
@@ -69,11 +70,15 @@ impl<'a> Session<'a> {
 	}
 
 	/// Adds an event listener to the session
+	///
+	/// Events are received after they have been processed by the event loop
 	pub fn add_listener<F: EventCallback + 'a>(&mut self, listener: F) {
 		self.listeners.push(Box::new(listener));
 	}
 
 	/// Adds a torrent to the session
+	///
+	/// The torrent will not start downloading until [start] is called
 	pub fn add(&self, meta_info: MetaInfo, store: Box<dyn Store>) {
 		let torrent = Arc::new(RwLock::new(Torrent::new(meta_info, store)));
 
@@ -83,6 +88,8 @@ impl<'a> Session<'a> {
 	}
 
 	/// Starts the event loop of the session
+	///
+	/// The event loop keeps on running until [Event::Stopped] is received
 	pub async fn start(&mut self) {
 		self.tx.send(Event::Started).unwrap();
 
@@ -338,11 +345,21 @@ impl<'a> Session<'a> {
 		}
 	}
 
-	/// Initiates a shutdown of the session
-	pub fn shutdown(&self) {
+	/// Stops the session by sending [Event::Stopped] to the event loop
+	pub fn stop(&self) {
 		self.tx.send(Event::Stopped).unwrap();
 		// TODO: We should make this async and join all handlers and stuff
 		// TODO: Check if we are even running (if the event loop is running)
+	}
+
+	/// Get a reference to the torrents currently managed by the session
+	pub fn torrents(&self) -> &Vec<TorrentPtr> {
+		&self.torrents
+	}
+
+	/// Get a reference to the configuration used by the session
+	pub fn config(&self) -> &Arc<Configuration> {
+		&self.config
 	}
 }
 
@@ -352,6 +369,7 @@ impl<'a> Default for Session<'a> {
 	}
 }
 
+// TODO: Should reasonably be moved into [Torrent]
 /// Announces a torrent
 async fn try_announce(tx: EventSender, peer_id: [u8; 20], torrent: TorrentPtr) {
 	let mut torrent_lock = torrent.write().await;
@@ -421,6 +439,7 @@ pub(crate) fn piece_size(piece: PieceID, meta_info: &MetaInfo) -> usize {
 	}
 }
 
+// TODO: Perhaps it is reasonable to use verification workers and some kind of thread pooling instead
 /// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
 async fn async_verify(piece: Arc<Vec<u8>>, hash: &[u8; 20]) -> bool {
 	// Use spawn_blocking because it is a CPU bound task
