@@ -28,6 +28,8 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * ~~Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams~~
 * Investigate [tracing](https://lib.rs/crates/tracing) for better logging
 * Investigate using cargo-audit and cargo-deny to use secure libraries with correct licenses (see [rustsec](https://rustsec.org/))
+* We could use [dashmap](https://lib.rs/crates/dashmap) for better performance
+  * Create an optimization heading?
 
 ### Features
 * ~~Add a new `Settings` struct~~ See [configuration](src/core/configuration.rs)
@@ -63,6 +65,8 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
   * Only actively form connections if client has less than 30 peers
   * Refuse connections after client has a maximum of 55 peers
   * PeerConnected messages
+* Use `Weak` instead of `Arc` for things that should not be kept alive
+* Make a lot of things pub(crate) instead of pub
 
 ### Notes
 * ~~Add a condition in worker to send KeepAlive messages every 120 seconds~~
@@ -97,6 +101,8 @@ We want to weave all requests in one, so basically we have a thread that loops a
 * Enable endgame when all pieces are downloading
 * Find a way to receive when a block has been cancelled
   * I think passing a broadcast to all `get_block` instances is the best way to do this
+* **Find a way to manage the peer threads in Session**
+  * Need to join the workers in the event loop
 
 ### Errors
 * ~~Why is `get_block` crashing? Investigate the [log](latest.log)~~

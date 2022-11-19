@@ -140,7 +140,6 @@ impl<'a> Session<'a> {
 								let mut peer = match tokio::time::timeout(
 									config.connect_timeout,
 									Peer::connect(
-										config.clone(),
 										addr,
 										wire::Handshake {
 											extensions: [0; 8],

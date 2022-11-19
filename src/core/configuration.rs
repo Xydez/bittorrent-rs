@@ -9,9 +9,9 @@ pub struct Configuration {
 	pub block_size: u32,
 	/// The maximum amount of concurrent block downloads for a peer. Generally around 5-10 block downloads.
 	pub concurrent_block_downloads: usize,
-	/// The maximum number of active piece verification jobs. Should be set to the `number of cores - 1` for optimal performance
+	/// The maximum number of active piece verification jobs.
 	pub verification_jobs: usize,
-	/// Peer id of the session
+	/// Peer id of the session.
 	pub peer_id: [u8; 20]
 }
 
@@ -22,7 +22,7 @@ impl Default for Configuration {
 			alive_timeout: std::time::Duration::from_secs_f64(120.0),
 			block_size: 16_384,
 			concurrent_block_downloads: 10,
-			verification_jobs: 8,
+			verification_jobs: std::thread::available_parallelism().map(std::num::NonZeroUsize::get).unwrap_or(8),
 			// TODO: Change to something sensible. Apparently some clients close the connection if they can't parse the peer id. Should use Azureus style.
 			peer_id: [b'x'; 20]
 		}

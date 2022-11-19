@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use thiserror::Error;
 
 use crate::{
@@ -7,7 +5,7 @@ use crate::{
 	protocol::wire::{Handshake, Message, Wire, WireError}
 };
 
-use super::{configuration::Configuration, session::PieceID, util};
+use super::{session::PieceID, util};
 
 #[derive(Error, Debug)]
 pub enum PeerError {
@@ -20,7 +18,6 @@ pub(crate) type Result<T> = std::result::Result<T, PeerError>;
 /// Abstraction of Wire that maintains peer state
 #[derive(Debug)]
 pub struct Peer {
-	config: Arc<Configuration>,
 	wire: Wire,
 	peer_id: [u8; 20],
 
@@ -47,16 +44,14 @@ pub struct Peer {
 
 impl Peer {
 	pub async fn connect<T: tokio::net::ToSocketAddrs>(
-		config: Arc<Configuration>,
 		addr: T,
 		handshake: Handshake
 	) -> Result<Peer> {
-		Peer::new(config, Wire::connect(addr).await?, handshake).await
+		Peer::new(Wire::connect(addr).await?, handshake).await
 	}
 
 	/// Connects to a peer and sends a handshake
 	pub async fn new(
-		config: Arc<Configuration>,
 		mut wire: Wire,
 		handshake: Handshake
 	) -> Result<Peer> {
@@ -65,7 +60,6 @@ impl Peer {
 		// TODO: If the initiator of the connection receives a handshake in which the peer_id does not match the expected peer_id, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
 
 		Ok(Peer {
-			config,
 			wire,
 			peer_id: peer_handshake.peer_id,
 			extensions: peer_handshake.extensions,
