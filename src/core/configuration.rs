@@ -22,7 +22,9 @@ impl Default for Configuration {
 			alive_timeout: std::time::Duration::from_secs_f64(120.0),
 			block_size: 16_384,
 			concurrent_block_downloads: 10,
-			verification_jobs: std::thread::available_parallelism().map(std::num::NonZeroUsize::get).unwrap_or(8),
+			verification_jobs: std::thread::available_parallelism()
+				.map(std::num::NonZeroUsize::get)
+				.unwrap_or(8),
 			// TODO: Change to something sensible. Apparently some clients close the connection if they can't parse the peer id. Should use Azureus style.
 			peer_id: [b'x'; 20]
 		}

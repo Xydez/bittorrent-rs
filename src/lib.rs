@@ -17,7 +17,7 @@
 //!
 //! #[tokio::main(flavor = "current_thread")]
 //! async fn main() {
-//!     let mut session = Session::new([b'x'; 20]);
+//!     let mut session = Session::new();
 //!     let meta_info = MetaInfo::load("sample.torrent").unwrap();
 //!
 //!     let store = FileStore::new(

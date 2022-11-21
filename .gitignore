@@ -1,6 +1,5 @@
-/target
-/downloads
-/torrents
-/logs
-*.log
 .vscode/
+target/
+logs/
+downloads/
+*.log

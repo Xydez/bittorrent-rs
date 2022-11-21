@@ -1,0 +1,13 @@
+[package]
+name = "bittorrent-cli"
+description = "command-line interface for bittorrent"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+
+[dependencies]
+argh = "0.1.9"
+bittorrent = { path = ".." }
+flexi_logger = { workspace = true }
+log = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }

@@ -187,7 +187,7 @@ mod tests {
 		assert_eq!(
 			PeerId::try_from(ver).unwrap(),
 			PeerId {
-				name: Some("Azereus".to_string()),
+				name: Some("Azureus".to_string()),
 				name_short: "AZ".to_string(),
 				version: Version {
 					major: 2,

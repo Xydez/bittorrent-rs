@@ -1,7 +1,22 @@
-[package]
-name = "bittorrent"
+[workspace]
+members = ["bittorrent-cli"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
+authors = ["Johannes <thexydez@gmail.com>"]
+
+[workspace.dependencies]
+flexi_logger = "0.24"
+log = "0.4"
+tokio = "1.19"
+
+[package]
+name = "bittorrent"
+description = "lightweight implementation of the bittorrent v1 protocol"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
 
 [features]
 io-tests = []
@@ -9,9 +24,7 @@ net-tests = []
 
 [dependencies]
 bytes = "1.2.1"
-flexi_logger = "0.24"
 lazy_static = "1.4.0"
-log = "0.4"
 percent-encoding = "2.1"
 rand = "0.8.5"
 rayon = "1.6.0"
@@ -22,4 +35,5 @@ serde_bytes = "0.11"
 sha-1 = "0.10"
 tap = "1.0.1"
 thiserror = "1.0"
-tokio = { version = "1.19", features = ["rt", "macros"] }
+log = { workspace = true }
+tokio = { workspace = true, features = ["macros"] }

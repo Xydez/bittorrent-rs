@@ -11,7 +11,7 @@
 //!
 //! #[tokio::main(flavor = "current_thread")]
 //! async fn main() {
-//!     let tracker = Tracker::new("https://example-tracker.com/announce");
+//!     let mut tracker = Tracker::new("https://example-tracker.com/announce");
 //!     let announce = Announce {
 //!         info_hash: [0; 20], // In reality, this MUST be a valid info hash
 //!         peer_id: [b'x'; 20],
@@ -23,7 +23,7 @@
 //!         event: Some(Event::Started)
 //!     };
 //!
-//!     let response = tracker.announce().await;
+//!     let response = tracker.announce(&announce).await;
 //!
 //!     println!("{:#?}", response);
 //! }
@@ -110,8 +110,6 @@ impl Tracker {
 
 	/// Send an announce request to the tracker
 	pub async fn announce(&mut self, announce: &Announce) -> Result<Response> {
-		// let peer_id = announce.peer_id.iter().collect::<String>().into_bytes();
-
 		// TODO: We currently only support compact mode, maybe have raw::Response and raw::CompactResponse?
 		let mut query = vec![
 			("port", announce.port.to_string()),

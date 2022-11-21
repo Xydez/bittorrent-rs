@@ -51,10 +51,7 @@ impl Peer {
 	}
 
 	/// Connects to a peer and sends a handshake
-	pub async fn new(
-		mut wire: Wire,
-		handshake: Handshake
-	) -> Result<Peer> {
+	pub async fn new(mut wire: Wire, handshake: Handshake) -> Result<Peer> {
 		let peer_handshake = wire.handshake(&handshake).await?;
 
 		// TODO: If the initiator of the connection receives a handshake in which the peer_id does not match the expected peer_id, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
