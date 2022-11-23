@@ -1,8 +1,10 @@
 use std::{
 	fs::{File, OpenOptions},
 	io::{Read, Seek, Write},
-	path::PathBuf
+	path::{PathBuf, Path}
 };
+
+use crate::protocol::metainfo::MetaInfo;
 
 pub trait Store: std::fmt::Debug + Send {
 	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
@@ -56,7 +58,10 @@ pub struct FileStore {
 }
 
 impl FileStore {
-	pub fn new(piece_length: usize, files: Vec<(usize, PathBuf)>) -> std::io::Result<FileStore> {
+	/// Creates a file store using the given piece length and files
+	///
+	/// The total length is calculated from the sum of the file sizes
+	pub fn new(piece_length: usize, files: impl IntoIterator<Item = (usize, PathBuf)>) -> std::io::Result<FileStore> {
 		let files = files
 			.into_iter()
 			.map(|(length, path)| {
@@ -87,6 +92,22 @@ impl FileStore {
 			files,
 			has_pieces
 		})
+	}
+
+	/// Creates a file store in the given directory using the provided [`MetaInfo`]
+	pub fn from_meta_info(directory: impl AsRef<Path>, meta_info: &MetaInfo) -> std::io::Result<FileStore> {
+		FileStore::new(
+			meta_info.piece_size,
+			meta_info
+				.files
+				.iter()
+				.map(|file| {
+					(
+						file.length,
+						std::path::Path::new(directory.as_ref()).join(&file.path)
+					)
+				})
+		)
 	}
 
 	pub fn destroy(self) -> std::io::Result<()> {

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use argh::FromArgs;
 use bittorrent::{
 	core::{
@@ -18,8 +20,8 @@ struct Args {
 	torrent: String,
 
 	/// download directory, defaults to the current dir
-	#[argh(option, default = "\"downloads\".to_string()")]
-	dir: String
+	#[argh(option, default = "\"downloads\".into()")]
+	dir: PathBuf
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -42,20 +44,7 @@ async fn main() {
 
 	let meta_info = MetaInfo::load(&args.torrent).unwrap();
 	std::fs::create_dir_all(args.dir.clone()).unwrap();
-	let store = FileStore::new(
-		meta_info.piece_size,
-		meta_info
-			.files
-			.iter()
-			.map(|file| {
-				(
-					file.length,
-					std::path::Path::new(&args.dir).join(&file.path)
-				)
-			})
-			.collect::<Vec<_>>()
-	)
-	.unwrap();
+	let store = FileStore::from_meta_info(&args.dir, &meta_info).unwrap();
 
 	session.add(meta_info, Box::new(store));
 
