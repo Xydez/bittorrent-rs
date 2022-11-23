@@ -25,14 +25,15 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 
 ## TODO
 ### Investigations
-* ~~Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams~~
+* Find a way to use `Sink` and `Stream` with `Wire`
+  * Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams
+  * Investigate [tokio_util::codec](https://docs.rs/tokio-util/0.6.10/tokio_util/codec/index.html)
 * Investigate [tracing](https://lib.rs/crates/tracing) for better logging
 * Investigate using cargo-audit and cargo-deny to use secure libraries with correct licenses (see [rustsec](https://rustsec.org/))
 * We could use [dashmap](https://lib.rs/crates/dashmap) for better performance
   * Create an optimization heading?
 
 ### Features
-* ~~Add a new `Settings` struct~~ See [configuration](src/core/configuration.rs)
 * Generic `StoreWriter` to write to the store more efficiently (buffered writes / write_vectored?)
   * Unix: Use `pwritev` in [*nix](https://lib.rs/crates/nix)
 * Magnet links
@@ -43,10 +44,6 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Document all the code
 
 ### Changes
-* ~~We should wait until a torrent added message or something like that in the peer threads instead of sleeping~~
-* ~~Use [thiserror](https://lib.rs/crates/thiserror) to write better errors~~
-* ~~Implement std::fmt::Display for Message so it prints nicer in the console - currently prints large chunks of binary data~~
-* ~~Implement std::fmt::Display for Event and remove dependency on [strum](https://lib.rs/crates/strum)~~
 * Store extensions as an extensions struct
 * Create a `verification_worker.rs` that handles verifying pieces
 * Standardize more of the code
@@ -69,7 +66,6 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Make a lot of things pub(crate) instead of pub
 
 ### Notes
-* ~~Add a condition in worker to send KeepAlive messages every 120 seconds~~
 * Make sure all Worker in session.peers are alive
   * Remember to join the tasks
 * Make sure piece.availability is updated
@@ -85,18 +81,6 @@ We want to weave all requests in one, so basically we have a thread that loops a
   * We have a peer worker where we spawn block download tasks. Each task has a broadcast receiver of messages received from the peer and a transmitter of blocks received.
 
 ### Current state
-* ~~Use [algorithm](src/core/algorithm.rs) to select pieces~~
-* ~~Note: Currently nothing happens after permit acquired - suspecting a deadlock~~
-  * ~~Log case 1 goes "loop iteration" -> "permit acquired"~~
-  * ~~Log case 2 goes "loop iteration" -> bitfield -> SendError(Bitfield(...))~~
-* ~~1 - Select a piece with the torrent's Picker~~
-* ~~2 - Get/create the download with the torrent~~
-* ~~3 - Select a block with the torrent's Picker~~
-* ~~Are we removing PieceDownload when it is finished?~~
-* ~~Create a `PieceEvent::Block`~~
-  * ~~Maybe we should assemble the piece in [session](src/core/session.rs)?~~
-* ~~Does Picker need its own RwLock? Since it's always used with Torrent it means both will be locked simultaneously anyways~~
-* ~~Is there some way to wait instead of lagging when broadcasting messages? (Only do this after we know the code works)~~
 * Update `piece.availability` when bitfield/have is received
 * Enable endgame when all pieces are downloading
 * Find a way to receive when a block has been cancelled
@@ -105,23 +89,5 @@ We want to weave all requests in one, so basically we have a thread that loops a
   * Need to join the workers in the event loop
 
 ### Errors
-* ~~Why is `get_block` crashing? Investigate the [log](latest.log)~~
-* ~~thread 'main' panicked at 'Failed to set piece 921698304. Byte is out of bounds (966470720815104 >= 3972317184)', src\io\store.rs:131:55~~
-* ~~`get_block` makes peer close connection~~
-  * ~~Maybe use [tokio_util::codec](https://docs.rs/tokio-util/latest/tokio_util/codec/index.html)~~
-    * ~~Use Framed?~~
-  * ~~Are we waiting for unchoke?~~
-  * ~~Is the message receive getting canceled? Edit: YES, read_exact does not have cancellation safety.~~
-  * ~~Use thiserror in metainfo.rs~~
-* ~~Investigate the [log](logs/bittorrent_2022-11-12_23-11-22.log)~~
-  * ~~We also only see 15/16 pieces downloaded, why doesn't the last message show up?~~
-  * ~~The peer downloads one complete piece, then idles (doesn't exit)~~
-  * ~~Find a better way to retreive the next block~~
-    * ~~(?) PickerIterator~~
-      * ~~Maintains a piecedownload from select_piece and switches when select_block is None.~~
-      * ~~Returns None when select_piece returns None~~
-* ~~We are seeing `BLOCK IS NONE` in the log after which pieces stop being requested, but is this really true?~~
-  * ~~Suspecting the fault might actually be in `select_piece` though - just intuition~~
-  * ~~My thought is that it's giving us a dogshit piece~~
 * Fix this warning
   * `WARN [bittorrent::core::session] download for piece 1291 block 15 not found, block downloaded in vain`
