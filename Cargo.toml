@@ -27,7 +27,6 @@ bytes = "1.2.1"
 lazy_static = "1.4.0"
 percent-encoding = "2.1"
 rand = "0.8.5"
-rayon = "1.6.0"
 reqwest = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_bencode = "0.2"
@@ -37,5 +36,4 @@ tap = "1.0.1"
 thiserror = "1.0"
 log = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
-console-subscriber = "0.1.8"
-paste = "1.0.9"
+paste = "1.0"
