@@ -1,3 +1,4 @@
+pub mod extensions;
 pub mod metainfo;
 pub mod peer_id;
 pub mod tracker;

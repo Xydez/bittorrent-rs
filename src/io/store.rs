@@ -1,7 +1,7 @@
 use std::{
 	fs::{File, OpenOptions},
 	io::{Read, Seek, Write},
-	path::{PathBuf, Path}
+	path::{Path, PathBuf}
 };
 
 use crate::protocol::metainfo::MetaInfo;
@@ -61,7 +61,10 @@ impl FileStore {
 	/// Creates a file store using the given piece length and files
 	///
 	/// The total length is calculated from the sum of the file sizes
-	pub fn new(piece_length: usize, files: impl IntoIterator<Item = (usize, PathBuf)>) -> std::io::Result<FileStore> {
+	pub fn new(
+		piece_length: usize,
+		files: impl IntoIterator<Item = (usize, PathBuf)>
+	) -> std::io::Result<FileStore> {
 		let files = files
 			.into_iter()
 			.map(|(length, path)| {
@@ -95,18 +98,18 @@ impl FileStore {
 	}
 
 	/// Creates a file store in the given directory using the provided [`MetaInfo`]
-	pub fn from_meta_info(directory: impl AsRef<Path>, meta_info: &MetaInfo) -> std::io::Result<FileStore> {
+	pub fn from_meta_info(
+		directory: impl AsRef<Path>,
+		meta_info: &MetaInfo
+	) -> std::io::Result<FileStore> {
 		FileStore::new(
 			meta_info.piece_size,
-			meta_info
-				.files
-				.iter()
-				.map(|file| {
-					(
-						file.length,
-						std::path::Path::new(directory.as_ref()).join(&file.path)
-					)
-				})
+			meta_info.files.iter().map(|file| {
+				(
+					file.length,
+					std::path::Path::new(directory.as_ref()).join(&file.path)
+				)
+			})
 		)
 	}
 

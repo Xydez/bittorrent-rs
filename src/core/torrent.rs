@@ -14,17 +14,23 @@ use super::{
 	algorithm::Picker,
 	piece::{Piece, Priority, State},
 	piece_download::PieceDownload,
-	session::PieceID,
-	util,
-	worker::Worker
+	session::{PeerPtr, PieceID},
+	util, worker
 };
+
+#[derive(Debug)]
+pub struct WorkerHandle {
+	pub peer: PeerPtr,
+	pub mode_tx: tokio::sync::watch::Sender<worker::Mode>,
+	pub task: tokio::task::JoinHandle<worker::Result<()>>
+}
 
 #[derive(Debug)]
 pub struct Torrent {
 	/// Meta info of the torrent
 	pub meta_info: MetaInfo,
 	/// List of all workers
-	pub peers: Vec<Worker>,
+	pub peers: Vec<WorkerHandle>,
 	/// Store of the torrent
 	pub store: Arc<Mutex<Box<dyn Store>>>,
 	/// List of all pieces

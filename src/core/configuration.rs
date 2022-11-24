@@ -1,3 +1,5 @@
+use crate::protocol::extensions::Extensions;
+
 /// Configuration of the session
 #[derive(Debug)]
 pub struct Configuration {
@@ -12,7 +14,9 @@ pub struct Configuration {
 	/// The maximum number of active piece verification jobs.
 	pub verification_jobs: usize,
 	/// Peer id of the session.
-	pub peer_id: [u8; 20]
+	pub peer_id: [u8; 20],
+	/// Extensions supported by the session.
+	pub extensions: Extensions
 }
 
 impl Default for Configuration {
@@ -26,7 +30,8 @@ impl Default for Configuration {
 				.map(std::num::NonZeroUsize::get)
 				.unwrap_or(8),
 			// TODO: Change to something sensible. Apparently some clients close the connection if they can't parse the peer id. Should use Azureus style.
-			peer_id: [b'x'; 20]
+			peer_id: [b'x'; 20],
+			extensions: Extensions([0; 8])
 		}
 	}
 }

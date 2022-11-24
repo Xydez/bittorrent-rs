@@ -7,6 +7,7 @@ use tokio::{
 };
 
 use super::message::{Message, MessageError};
+use crate::protocol::extensions::Extensions;
 
 const PROTOCOL: &[u8] = b"BitTorrent protocol";
 
@@ -22,25 +23,23 @@ pub enum WireError {
 
 pub(crate) type Result<T> = std::result::Result<T, WireError>;
 
+#[derive(Debug)]
 pub struct Handshake {
-	pub extensions: [u8; 8],
+	pub extensions: Extensions,
 	pub info_hash: [u8; 20],
 	pub peer_id: [u8; 20]
 }
 
 #[derive(Debug)]
 pub struct Wire {
-	stream: TcpStream, // BufWriter?
+	stream: TcpStream,
 	buffer: BytesMut
 }
 
 impl Wire {
 	/// Connect to a peer
-	pub async fn connect<T: tokio::net::ToSocketAddrs>(addr: T) -> Result<Wire> {
-		tokio::net::TcpStream::connect(addr)
-			.await
-			.map(Wire::new)
-			.map_err(WireError::from)
+	pub async fn connect<T: tokio::net::ToSocketAddrs>(addr: T) -> std::io::Result<Wire> {
+		tokio::net::TcpStream::connect(addr).await.map(Wire::new)
 	}
 
 	/// Initialize the peer wire
@@ -131,6 +130,8 @@ impl Wire {
 		let mut extensions = [0u8; 8];
 		self.stream.read_exact(&mut extensions).await?;
 
+		let extensions = Extensions(extensions);
+
 		let mut info_hash = [0u8; 20];
 		self.stream.read_exact(&mut info_hash).await?;
 
@@ -156,7 +157,7 @@ impl Wire {
 		self.stream.write_all(PROTOCOL).await?;
 
 		// Supported extensions. Currently, none are supported.
-		self.stream.write_all(&handshake.extensions).await?;
+		self.stream.write_all(&handshake.extensions.0).await?;
 
 		self.stream.write_all(&handshake.info_hash).await?;
 		self.stream.write_all(&handshake.peer_id).await?;

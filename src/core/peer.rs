@@ -2,7 +2,10 @@ use thiserror::Error;
 
 use crate::{
 	core::bitfield::Bitfield,
-	protocol::wire::{Handshake, Message, Wire, WireError}
+	protocol::{
+		extensions::Extensions,
+		wire::{Handshake, Message, Wire, WireError}
+	}
 };
 
 use super::{session::PieceID, util};
@@ -23,7 +26,7 @@ pub struct Peer {
 
 	// TODO: Maybe store as u64 or as an Extensions type.
 	/// The extensions the peer supports
-	extensions: [u8; 8],
+	extensions: Extensions,
 
 	/// Whether we are choking the peer
 	am_choking: bool,
@@ -43,15 +46,16 @@ pub struct Peer {
 }
 
 impl Peer {
+	/// Connects to a peer and perform a handshake
 	pub async fn connect<T: tokio::net::ToSocketAddrs>(
 		addr: T,
 		handshake: Handshake
-	) -> Result<Peer> {
-		Peer::new(Wire::connect(addr).await?, handshake).await
+	) -> std::io::Result<Result<Peer>> {
+		Ok(Peer::handshake(Wire::connect(addr).await?, handshake).await)
 	}
 
-	/// Connects to a peer and sends a handshake
-	pub async fn new(mut wire: Wire, handshake: Handshake) -> Result<Peer> {
+	/// Performs a handshake with a peer
+	pub async fn handshake(mut wire: Wire, handshake: Handshake) -> Result<Peer> {
 		let peer_handshake = wire.handshake(&handshake).await?;
 
 		// TODO: If the initiator of the connection receives a handshake in which the peer_id does not match the expected peer_id, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
@@ -109,7 +113,7 @@ impl Peer {
 		util::hex(&self.peer_id[16..20])
 	}
 
-	pub fn extensions(&self) -> &[u8; 8] {
+	pub fn extensions(&self) -> &Extensions {
 		&self.extensions
 	}
 

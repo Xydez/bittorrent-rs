@@ -4,17 +4,16 @@ use sha1::{Digest, Sha1};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use crate::{
-	core::{event::Event, peer::Peer, util},
+	core::{event::Event, peer::Peer, torrent::WorkerHandle, util},
 	io::store::Store,
 	protocol::{
 		metainfo::MetaInfo,
 		tracker::Announce,
-		wire::{self, Message}
+		wire::{Handshake, Wire}
 	}
 };
 
 use super::{
-	bitfield::Bitfield,
 	configuration::Configuration,
 	event::{PieceEvent, TorrentEvent},
 	piece,
@@ -137,25 +136,15 @@ impl<'a> Session<'a> {
 
 							// TODO: Use a tokio::task::JoinSet instead
 							tokio::spawn(async move {
-								let mut peer = match tokio::time::timeout(
+								let stream = match tokio::time::timeout(
 									config.connect_timeout,
-									Peer::connect(
-										addr,
-										wire::Handshake {
-											extensions: [0; 8],
-											info_hash,
-											peer_id
-										}
-									)
+									tokio::net::TcpStream::connect(&addr)
 								)
 								.await
 								{
-									Ok(Ok(peer)) => {
-										log::info!(
-											"Connected to peer [{}]",
-											util::hex(peer.peer_id())
-										);
-										peer
+									Ok(Ok(stream)) => {
+										log::info!("Connected to {}", addr);
+										stream
 									},
 									Ok(Err(error)) => {
 										log::error!(
@@ -172,52 +161,62 @@ impl<'a> Session<'a> {
 									}
 								};
 
-								// Create a bitfield of our pieces
-								let bitfield = Bitfield::from_bytes(
-									&torrent
-										.read()
-										.await
-										.pieces
-										.chunks(8)
-										.map(|pieces| {
-											pieces.iter().enumerate().fold(
-												0u8,
-												|acc, (i, piece)| {
-													if piece.state == piece::State::Done {
-														// TODO: >= piece::State::Verified
-														acc + (1 << (7 - i))
-													} else {
-														acc
-													}
-												}
-											)
-										})
-										.collect::<Vec<u8>>()
-								);
+								let handshake = Handshake {
+									extensions: config.extensions.clone(),
+									info_hash,
+									peer_id
+								};
 
-								peer.send(Message::Bitfield(bitfield)).await.unwrap();
-
+								let wire = Wire::new(stream);
+								let peer = match tokio::time::timeout(
+									config.connect_timeout,
+									Peer::handshake(wire, handshake)
+								)
+								.await
 								{
-									let peer = Arc::new(Mutex::new(peer));
-									let (mode_tx, mode_rx) = tokio::sync::watch::channel(Mode {
-										download: true,
-										seed: false
-									});
+									Ok(Ok(peer)) => {
+										log::info!(
+											"Handshake performed with {} [{}]",
+											addr,
+											util::hex(peer.peer_id())
+										);
+										peer
+									},
+									Ok(Err(error)) => {
+										log::error!(
+											"Failed to perform handshake with {}: {}",
+											addr,
+											util::error_chain(error)
+										);
+										return;
+									},
+									Err(_) => {
+										log::error!("Failed to perform handshake with {}: Connection timed out", addr);
+										return;
+									}
+								};
 
-									let task = worker::spawn(
-										config,
-										torrent.clone(),
-										peer.clone(),
-										tx,
-										mode_rx
-									);
+								let peer = Arc::new(Mutex::new(peer));
+								let (mode_tx, mode_rx) = tokio::sync::watch::channel(Mode {
+									download: true,
+									seed: false
+								});
 
-									torrent.write().await.peers.push(worker::Worker {
-										mode_tx,
-										peer,
-										task
-									});
-								}
+								let mut lock = torrent.write().await;
+
+								let task = tokio::spawn(worker::run(
+									config,
+									torrent.clone(),
+									peer.clone(),
+									tx,
+									mode_rx
+								));
+
+								lock.peers.push(WorkerHandle {
+									mode_tx,
+									peer,
+									task
+								});
 							});
 						}
 					},

@@ -44,7 +44,6 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Document all the code
 
 ### Changes
-* Store extensions as an extensions struct
 * Create a `verification_worker.rs` that handles verifying pieces
 * Standardize more of the code
   * Piece ID and piece size
@@ -69,7 +68,7 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Make sure all Worker in session.peers are alive
   * Remember to join the tasks
 * Make sure piece.availability is updated
-* Always send a `bittorrent::wire::Message::Cancel` when the peer worker shuts down
+* Send `bittorrent::wire::Message::Cancel` if session shuts down during download
 * Announce started/completed/stopped to tracker
 
 ## Active projects
