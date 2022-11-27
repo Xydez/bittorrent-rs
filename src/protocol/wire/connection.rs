@@ -1,5 +1,5 @@
 use bytes::{Buf, BytesMut};
-use std::convert::TryInto;
+use std::{convert::TryInto, net::SocketAddr};
 use thiserror::Error;
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
@@ -111,6 +111,11 @@ impl Wire {
 		} else {
 			Ok(peer_handshake)
 		}
+	}
+
+	/// Returns the socket address of the remote peer of this TCP connection.
+	pub fn peer_addr(&self) -> std::io::Result<SocketAddr> {
+		self.stream.peer_addr()
 	}
 
 	/// Receives handshake info from the peer

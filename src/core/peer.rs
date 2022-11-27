@@ -4,6 +4,7 @@ use crate::{
 	core::bitfield::Bitfield,
 	protocol::{
 		extensions::Extensions,
+		peer_id::PeerId,
 		wire::{Handshake, Message, Wire, WireError}
 	}
 };
@@ -143,5 +144,18 @@ impl Peer {
 			.as_ref()
 			.map(|v| v.get(i as usize))
 			.unwrap_or(false)
+	}
+}
+
+impl std::fmt::Display for Peer {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			f,
+			"{} ({})",
+			self.wire.peer_addr().map_err(|_| std::fmt::Error)?,
+			PeerId::parse(&self.peer_id)
+				.map(|peer_id| peer_id.to_string())
+				.unwrap_or_else(|_| util::hex(&self.peer_id))
+		)
 	}
 }
