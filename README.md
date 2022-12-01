@@ -23,6 +23,16 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * https://www.bittorrent.org/beps/bep_0010.html
 * http://conferences.sigcomm.org/imc/2006/papers/p20-legout.pdf
 
+## Coding guidelines
+* `use super::..` is forbidden outside test modules
+* All code must be formatted with `rustfmt`
+* Follow the guidelines for log levels
+  * **Error** - Something has failed, but the application can keep on running
+  * **Warn** - Something unexpected has occurred, and should probably be investigated sooner or later
+  * **Info** - Information on important events within the application
+  * **Debug** - Events useful to debugging issues with the application
+  * **Trace** - Redundant fine-grained details showing the step-by-step execution of the program
+
 ## TODO
 ### Investigations
 * Find a way to use `Sink` and `Stream` with `Wire`
@@ -90,3 +100,5 @@ We want to weave all requests in one, so basically we have a thread that loops a
 ### Errors
 * Fix this warning
   * `WARN [bittorrent::core::session] download for piece 1291 block 15 not found, block downloaded in vain`
+* Fix sometimes getting stuck near end
+  * `INFO [bittorrent_cli]    0 PENDING   3 DOWNLOADING   0 VERIFYING  1330 DONE   0 OTHER`

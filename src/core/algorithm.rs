@@ -4,11 +4,19 @@
 // https://www.researchgate.net/publication/223808116_Implementation_and_analysis_of_the_BitTorrent_protocol_with_a_multi-agent_model
 // https://www.researchgate.net/figure/Implementation-of-the-choking-algorithm_fig3_223808116
 
-use rand::seq::{IteratorRandom, SliceRandom};
+use rand::seq::{
+	IteratorRandom,
+	SliceRandom
+};
 use tap::Tap;
 
-use super::{
-	block, peer::Peer, piece, piece_download::PieceDownload, session::PieceID, torrent::Torrent
+use crate::core::{
+	block,
+	peer::Peer,
+	piece,
+	piece_download::PieceDownload,
+	session::PieceId,
+	torrent::Torrent
 };
 
 #[derive(Debug)]
@@ -23,7 +31,7 @@ impl Picker {
 		}
 	}
 
-	pub fn select_piece(&self, torrent: &Torrent, peer: &Peer) -> Option<PieceID> {
+	pub fn select_piece(&self, torrent: &Torrent, peer: &Peer) -> Option<PieceId> {
 		if let Some(i) = torrent
 			.active_pieces()
 			.filter(|(i, piece)| piece.priority == piece::Priority::Highest && peer.has_piece(*i))
@@ -42,39 +50,39 @@ impl Picker {
 		} else {
 			// If we have at least four complete pieces, use a "rarest piece first" so we will have more unusual pieces, which will be helpful in the trade with other peers.
 			torrent.pending_pieces()
-                .filter(|(i, _)| peer.has_piece(*i))
-                .collect::<Vec<_>>()
-                .tap_mut(|pieces|
-                    pieces.sort_by(|(_, a), (_, b)|
-                        a.priority
-                            .cmp(&b.priority) // TODO: Priority should be descending, availability should be ascending
-                            .then(a.availability.cmp(&b.availability))
-                    )
-                )
-                .into_iter()
-                .take(8)
-                .map(|(i, _)| i)
-                .enumerate()
-                .collect::<Vec<_>>()
-                //.first()
-                .choose_weighted(&mut rand::thread_rng(), |(i, _)| 256 / 2i32.pow(*i as u32 + 1))
-                .ok()
-                .map(|(_, p)| *p)
-                .or_else(||
-                    // If we are in the end game, we are allowed to select downloading pieces if no pending pieces are found
-                    if self.end_game {
-                        torrent.downloading_pieces()
-                            .filter(|(i, _)| peer.has_piece(*i))
-                            .collect::<Vec<_>>()
-                            .tap_mut(|pieces|
-                                pieces.sort_by_key(|(_, piece)| piece.availability)
-                            )
-                            .choose(&mut rand::thread_rng())
-                            .map(|(p, _)| *p)
-                    } else {
-                        None
-                    }
-                )
+				.filter(|(i, _)| peer.has_piece(*i))
+				.collect::<Vec<_>>()
+				.tap_mut(|pieces|
+					pieces.sort_by(|(_, a), (_, b)|
+						a.priority
+							.cmp(&b.priority) // TODO: Priority should be descending, availability should be ascending
+							.then(a.availability.cmp(&b.availability))
+					)
+				)
+				.into_iter()
+				.take(8)
+				.map(|(i, _)| i)
+				.enumerate()
+				.collect::<Vec<_>>()
+				//.first()
+				.choose_weighted(&mut rand::thread_rng(), |(i, _)| 256 / 2i32.pow(*i as u32 + 1))
+				.ok()
+				.map(|(_, p)| *p)
+				.or_else(||
+					// If we are in the end game, we are allowed to select downloading pieces if no pending pieces are found
+					if self.end_game {
+						torrent.downloading_pieces()
+							.filter(|(i, _)| peer.has_piece(*i))
+							.collect::<Vec<_>>()
+							.tap_mut(|pieces|
+								pieces.sort_by_key(|(_, piece)| piece.availability)
+							)
+							.choose(&mut rand::thread_rng())
+							.map(|(p, _)| *p)
+					} else {
+						None
+					}
+				)
 		}
 		/*
 		else {

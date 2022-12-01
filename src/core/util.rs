@@ -47,6 +47,7 @@ pub fn parse_hex(str: &str) -> Result<Vec<u8>, ParseError> {
 	Ok(nums)
 }
 
+/// Creates a [`BTreeMap`] grouping elements of an iterator by the key retrieved by a function
 pub fn group_by_key<I, V, K, F>(elements: I, mut f: F) -> std::collections::BTreeMap<K, Vec<V>>
 where
 	I: IntoIterator<Item = V>,
@@ -62,6 +63,7 @@ where
 	map
 }
 
+/// Formats a string of an error and all errors that caused it
 pub fn error_chain<E: std::error::Error>(error: E) -> String {
 	let mut string = format!("{}", error);
 
@@ -74,6 +76,7 @@ pub fn error_chain<E: std::error::Error>(error: E) -> String {
 	string
 }
 
+/// Get a bit in a byte array
 #[inline]
 pub fn get_bit(bytes: &[u8], i: usize) -> bool {
 	let n = i / 8;
@@ -82,6 +85,7 @@ pub fn get_bit(bytes: &[u8], i: usize) -> bool {
 	bytes[n] & (1 << m) != 0
 }
 
+/// Set a bit in a byte array
 #[inline]
 pub fn set_bit(bytes: &mut [u8], i: usize, value: bool) {
 	let n = i / 8;
@@ -91,6 +95,33 @@ pub fn set_bit(bytes: &mut [u8], i: usize, value: bool) {
 		bytes[n] |= 1 << m;
 	} else {
 		bytes[n] &= !(1 << m);
+	}
+}
+
+/// Stanardized formatting to describe a block within a piece
+pub fn fmt_block(piece: crate::core::session::PieceId, block: usize) -> String {
+	format!("{}:{}", piece, block)
+}
+
+/// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
+pub async fn async_verify(piece: std::sync::Arc<Vec<u8>>, hash: &[u8; 20]) -> bool {
+	// Use spawn_blocking because it is a CPU bound task
+	hash == &tokio::task::spawn_blocking(move || {
+		<[u8; 20]>::try_from(<sha1::Sha1 as sha1::Digest>::digest(&*piece).as_slice()).unwrap()
+	})
+	.await
+	.unwrap()
+}
+
+/// Calculates the size of a piece using the [`MetaInfo`]
+pub fn piece_size(
+	piece: crate::core::session::PieceId,
+	meta_info: &crate::protocol::metainfo::MetaInfo
+) -> usize {
+	if piece as usize == meta_info.pieces.len() - 1 {
+		meta_info.last_piece_size
+	} else {
+		meta_info.piece_size
 	}
 }
 

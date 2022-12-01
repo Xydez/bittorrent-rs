@@ -1,6 +1,9 @@
+use std::{
+	convert::TryFrom,
+	io::Read
+};
+
 use sha1::Digest;
-use std::convert::TryFrom;
-use std::io::Read;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -62,7 +65,7 @@ impl TryFrom<&[u8]> for MetaInfo {
 				}
 
 				file_infos
-			},
+			}
 			None => match metadata.info.length {
 				None => return Err(MetaInfoError::InvalidMetaInfo),
 				Some(length) => vec![FileInfo {
@@ -112,7 +115,10 @@ pub struct FileInfo {
 }
 
 mod raw {
-	use serde::{Deserialize, Serialize};
+	use serde::{
+		Deserialize,
+		Serialize
+	};
 
 	#[derive(Debug, Deserialize)]
 	pub struct MetaInfo {

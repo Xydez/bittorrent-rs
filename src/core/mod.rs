@@ -1,12 +1,12 @@
-pub mod algorithm;
+pub(crate) mod algorithm;
 pub mod bitfield;
 pub mod block;
 pub mod configuration;
 pub mod event;
-pub mod peer;
+pub(crate) mod peer;
 pub mod piece;
-pub mod piece_download;
+pub(crate) mod piece_download;
 pub mod session;
 pub mod torrent;
 pub mod util;
-pub mod worker;
+pub(crate) mod worker;

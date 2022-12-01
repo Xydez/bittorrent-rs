@@ -3,14 +3,15 @@ use std::path::PathBuf;
 use argh::FromArgs;
 use bittorrent::{
 	core::{
-		event::{Event, PieceEvent, TorrentEvent},
+		event::{
+			Event,
+			PieceEvent,
+			TorrentEvent
+		},
 		piece::State
 	},
 	prelude::*
 };
-
-//const TORRENT: &str = "torrents/[SubsPlease] Kage no Jitsuryokusha ni Naritakute! - 06 (1080p) [9E88E130].mkv.torrent";
-//const DOWNLOAD_DIR: &str = "downloads";
 
 /// Download a torrent
 #[derive(FromArgs, Debug)]
@@ -40,19 +41,30 @@ async fn main() {
 
 	let args: Args = argh::from_env();
 
-	let mut session = Session::new();
+	let (session, mut rx) = Session::spawn();
 
 	let meta_info = MetaInfo::load(&args.torrent).unwrap();
 	std::fs::create_dir_all(args.dir.clone()).unwrap();
 	let store = FileStore::from_meta_info(&args.dir, &meta_info).unwrap();
 
-	session.add(meta_info, Box::new(store));
+	// TODO: We can remove the need for async if we convert it to TorrentPtr in SessionHandle
+	let torrent = session.add_torrent(Torrent::new(meta_info, store)).await;
 
-	session.add_listener(|session: &Session, event: &Event| match event {
-		Event::TorrentEvent(torrent, TorrentEvent::PieceEvent(_piece, PieceEvent::Done)) => {
-			let torrent = torrent.clone();
+	loop {
+		let event = match rx.recv().await {
+			Ok(event) => event,
+			Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+				log::warn!("Lagged {count} messaged behind");
+				continue;
+			}
+			Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+				log::info!("Receiver is closed, terminating loop");
+				break;
+			}
+		};
 
-			tokio::spawn(async move {
+		match event {
+			Event::TorrentEvent(_, TorrentEvent::PieceEvent(_piece, PieceEvent::Done)) => {
 				let (pending, downloading, verifying, done, other) = {
 					let torrent = torrent.read().await;
 
@@ -81,11 +93,11 @@ async fn main() {
 					done,
 					other
 				);
-			});
-		},
-		Event::TorrentEvent(_torrent, TorrentEvent::Done) => session.stop(),
-		_ => ()
-	});
+			}
+			Event::TorrentEvent(_, TorrentEvent::Done) => session.shutdown(),
+			_ => ()
+		}
+	}
 
-	session.start().await;
+	session.join().await;
 }

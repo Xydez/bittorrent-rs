@@ -9,15 +9,11 @@
 //!
 //! # Example
 //! ```rust,no_run
-//! use bittorrent::{
-//!     core::session::Session,
-//!     protocol::metainfo::MetaInfo,
-//!     io::store::FileStore
-//! };
+//! use bittorrent::prelude::*;
 //!
 //! #[tokio::main(flavor = "current_thread")]
 //! async fn main() {
-//!     let mut session = Session::new();
+//!     let (session, _) = Session::spawn();
 //!     let meta_info = MetaInfo::load("sample.torrent").unwrap();
 //!
 //!     let store = FileStore::new(
@@ -29,8 +25,10 @@
 //!     )
 //!     .unwrap();
 //!
-//!     session.add(meta_info, Box::new(store));
-//!     session.start().await;
+//!     session.add_torrent(Torrent::new(meta_info, store));
+//!
+//!     // Will keep on running until shutdown is called on the session
+//!     session.join().await;
 //! }
 //! ```
 

@@ -1,15 +1,22 @@
 use thiserror::Error;
 
 use crate::{
-	core::bitfield::Bitfield,
+	core::{
+		bitfield::Bitfield,
+		session::PieceId,
+		util
+	},
 	protocol::{
 		extensions::Extensions,
 		peer_id::PeerId,
-		wire::{Handshake, Message, Wire, WireError}
+		wire::{
+			Handshake,
+			Message,
+			Wire,
+			WireError
+		}
 	}
 };
-
-use super::{session::PieceID, util};
 
 #[derive(Error, Debug)]
 pub enum PeerError {
@@ -138,7 +145,7 @@ impl Peer {
 		self.last_message_sent
 	}
 
-	pub fn has_piece(&self, i: PieceID) -> bool {
+	pub fn has_piece(&self, i: PieceId) -> bool {
 		// If we haven't received a bitfield, it means the peer has no pieces yet
 		self.peer_pieces
 			.as_ref()

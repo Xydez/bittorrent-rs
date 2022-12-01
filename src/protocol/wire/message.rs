@@ -87,7 +87,7 @@ impl TryFrom<&[u8]> for Message {
 		let payload = &buffer[1..];
 
 		match id {
-			0..=3 =>
+			0..=3 => {
 				if payload.is_empty() {
 					match id {
 						0 => Ok(Message::Choke),
@@ -98,14 +98,15 @@ impl TryFrom<&[u8]> for Message {
 					}
 				} else {
 					Err(MessageError::InvalidPayload)
-				},
+				}
+			}
 			4 => Ok(Message::Have(u32::from_be_bytes(
 				payload
 					.try_into()
 					.map_err(|_| MessageError::InvalidPayload)?
 			))),
 			5 => Ok(Message::Bitfield(Bitfield::from_bytes(payload))),
-			6 =>
+			6 => {
 				if payload.len() == 3 * std::mem::size_of::<u32>() {
 					Ok(Message::Request(
 						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
@@ -114,8 +115,9 @@ impl TryFrom<&[u8]> for Message {
 					))
 				} else {
 					Err(MessageError::InvalidPayload)
-				},
-			7 =>
+				}
+			}
+			7 => {
 				if payload.len() > 2 * std::mem::size_of::<u32>() {
 					Ok(Message::Piece(
 						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
@@ -124,8 +126,9 @@ impl TryFrom<&[u8]> for Message {
 					))
 				} else {
 					Err(MessageError::InvalidPayload)
-				},
-			8 =>
+				}
+			}
+			8 => {
 				if payload.len() == 3 * std::mem::size_of::<u32>() {
 					Ok(Message::Cancel(
 						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
@@ -134,7 +137,8 @@ impl TryFrom<&[u8]> for Message {
 					))
 				} else {
 					Err(MessageError::InvalidPayload)
-				},
+				}
+			}
 			id => Err(MessageError::InvalidID(id))
 		}
 	}
@@ -159,8 +163,9 @@ impl From<Message> for Vec<u8> {
 				]
 				.concat()
 			),
-			Message::Piece(index, begin, piece) =>
-				data.extend([&index.to_be_bytes(), &begin.to_be_bytes(), piece.as_slice()].concat()),
+			Message::Piece(index, begin, piece) => {
+				data.extend([&index.to_be_bytes(), &begin.to_be_bytes(), piece.as_slice()].concat())
+			}
 			Message::Cancel(index, begin, length) => data.extend(
 				[
 					index.to_be_bytes(),
@@ -186,12 +191,15 @@ impl std::fmt::Display for Message {
 			Message::NotInterested => write!(f, "KeepAlive"),
 			Message::Have(i) => write!(f, "Have({})", i),
 			Message::Bitfield(bitfield) => write!(f, "Bitfield(<{} elements>)", bitfield.len()),
-			Message::Request(index, begin, length) =>
-				write!(f, "Request({}, {}, {})", index, begin, length),
-			Message::Piece(index, begin, piece) =>
-				write!(f, "Piece({}, {}, <{} elements>)", index, begin, piece.len()),
-			Message::Cancel(index, begin, length) =>
-				write!(f, "Cancel({}, {}, {})", index, begin, length),
+			Message::Request(index, begin, length) => {
+				write!(f, "Request({}, {}, {})", index, begin, length)
+			}
+			Message::Piece(index, begin, piece) => {
+				write!(f, "Piece({}, {}, <{} elements>)", index, begin, piece.len())
+			}
+			Message::Cancel(index, begin, length) => {
+				write!(f, "Cancel({}, {}, {})", index, begin, length)
+			}
 		}
 	}
 }

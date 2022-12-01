@@ -22,13 +22,15 @@ lazy_static! {
 					short: object.get("short").unwrap().as_str().unwrap().as_bytes().to_vec(),
 					long: object.get("long").unwrap().as_str().unwrap().to_string(),
 					style: object.get("style").map(|str| match str.as_str().unwrap() {
+						"VER_AZ_DELUGE" => Style::ThreeHex,
+						"VER_AZ_FOUR_DIGITS" => Style::OneOneOneOne,
+						"VER_AZ_MAJ_MIN_TWO_SKIP" => Style::OneOne,
+						"VER_AZ_ONE_THREE" => Style::OneThree,
+						"VER_AZ_SKIP_FIRST_ONE_MAJ_TWO_MIN" => Style::SkipOneTwo,
 						"VER_AZ_THREE_DIGITS" => Style::Three,
 						"VER_AZ_THREE_DIGITS_PLUS_MNEMONIC" => Style::Three, // TODO: Support mnemonics as well
-						"VER_AZ_FOUR_DIGITS" => Style::OneOneOneOne,
+						"VER_AZ_TRANSMISSION_STYLE" => Style::Transmission,
 						"VER_AZ_TWO_MAJ_TWO_MIN" => Style::TwoTwo,
-						"VER_AZ_ONE_THREE" => Style::OneThree,
-						"VER_AZ_MAJ_MIN_TWO_SKIP" => Style::OneOne,
-						"VER_AZ_SKIP_FIRST_ONE_MAJ_TWO_MIN" => Style::SkipOneTwo,
 						style => Style::Unknown(style.to_string())
 					})
 					.unwrap_or(Style::OneOneOneOne)
@@ -104,7 +106,7 @@ impl Version {
 				patch: None,
 				build: None
 			},
-			Style::Transmission =>
+			Style::Transmission => {
 				if digits[0] == b'0' && digits[1] == b'0' {
 					Version {
 						major: 0,
@@ -119,7 +121,8 @@ impl Version {
 						patch: None,
 						build: None
 					}
-				},
+				}
+			}
 			Style::Three => Version {
 				major: ctoi(digits[0])?,
 				minor: ctoi(digits[1])?,
@@ -173,14 +176,40 @@ impl std::fmt::Display for Version {
 
 #[derive(Debug, PartialEq)]
 pub struct PeerId {
-	pub name: String,
+	pub name: Option<String>,
 	pub name_short: String,
 	pub version: Version,
 	random: Vec<u8>
 }
 
 impl PeerId {
-	pub fn parse(value: &[u8]) -> Result<Self> {
+	/// Generates an Azureus-style Peer ID
+	pub fn generate(name_short: [u8; 2], version: Version) -> [u8; 20] {
+		[
+			b'-',
+			name_short[0],
+			name_short[1],
+			char::from_digit(version.major as u32, 10).unwrap() as u8,
+			char::from_digit(version.minor as u32, 10).unwrap() as u8,
+			char::from_digit(version.patch.unwrap_or(0) as u32, 10).unwrap() as u8,
+			char::from_digit(version.build.unwrap_or(0) as u32, 10).unwrap() as u8,
+			b'-'
+		]
+		.into_iter()
+		//.chain(std::iter::from_fn(|| {
+		//	Some(rand::Rng::gen::<u8>(&mut rand::thread_rng()))
+		//}))
+		.chain(rand::Rng::sample_iter(
+			&mut rand::thread_rng(),
+			rand::distributions::Alphanumeric
+		))
+		.take(20)
+		.collect::<Vec<u8>>()
+		.try_into()
+		.unwrap()
+	}
+
+	pub fn parse(value: &[u8; 20]) -> Result<Self> {
 		if value.len() != 20 {
 			return Err(ParseError::Invalid);
 		}
@@ -206,7 +235,7 @@ impl PeerId {
 			let version = Version::parse(digits, client.style.clone())?;
 
 			return Ok(PeerId {
-				name: client.long.clone(),
+				name: Some(client.long.clone()),
 				name_short: String::from_utf8(name_short.to_vec()).unwrap(),
 				version,
 				random: random.to_vec()
@@ -219,17 +248,32 @@ impl PeerId {
 	}
 
 	pub fn parse_str(value: &str) -> Result<Self> {
-		Self::parse(value.as_bytes())
+		Self::parse(
+			value
+				.as_bytes()
+				.try_into()
+				.map_err(|_| ParseError::Invalid)?
+		)
 	}
 
 	pub fn parse_hex(value: &str) -> Result<Self> {
-		Self::parse(&util::parse_hex(value).map_err(|_| ParseError::Invalid)?)
+		Self::parse(
+			&util::parse_hex(value)
+				.map_err(|_| ParseError::Invalid)?
+				.try_into()
+				.map_err(|_| ParseError::Invalid)?
+		)
 	}
 }
 
 impl std::fmt::Display for PeerId {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{} {}", self.name, self.version)
+		write!(
+			f,
+			"{} {}",
+			self.name.as_ref().unwrap_or(&self.name_short),
+			self.version
+		)
 	}
 }
 
@@ -257,9 +301,8 @@ struct Client {
 /// https://github.com/webtorrent/bittorrent-peerid/blob/master/test/basic.js
 #[cfg(test)]
 mod tests {
-	use crate::{core::util, protocol::peer_id::Version};
-
-	use super::PeerId;
+	use super::*;
+	use crate::core::util;
 
 	#[test]
 	fn test_azureus() {
@@ -267,7 +310,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(&ver).unwrap(),
 			PeerId {
-				name: "Vuze".to_string(),
+				name: Some("Vuze".to_string()),
 				name_short: "AZ".to_string(),
 				version: Version {
 					major: 2,
@@ -285,7 +328,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-AT2520-vEEt0wO6v0cr"),
 			Ok(PeerId {
-				name: "Artemis".to_string(),
+				name: Some("Artemis".to_string()),
 				name_short: "AT".to_string(),
 				version: Version::new(2, 5, Some(2), Some(0)),
 				random: b"vEEt0wO6v0cr".to_vec()
@@ -295,7 +338,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-AZ2200-6wfG2wk6wWLc"),
 			Ok(PeerId {
-				name: "Vuze".to_string(),
+				name: Some("Vuze".to_string()),
 				name_short: "AZ".to_string(),
 				version: Version::new(2, 2, Some(0), Some(0)),
 				random: b"6wfG2wk6wWLc".to_vec()
@@ -305,7 +348,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse_hex("2D535A323133322D000000000000000000000000"),
 			Ok(PeerId {
-				name: "Shareaza".to_string(),
+				name: Some("Shareaza".to_string()),
 				name_short: "SZ".to_string(),
 				version: Version::new(2, 1, Some(3), Some(2)),
 				random: util::parse_hex("000000000000000000000000").unwrap()
@@ -315,7 +358,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse_hex("2D5647323634342D4FD62CDA69E235717E3BB94B"),
 			Ok(PeerId {
-				name: "\u{54c7}\u{560E} (Vagaa)".to_string(),
+				name: Some("\u{54c7}\u{560E} (Vagaa)".to_string()),
 				name_short: "VG".to_string(),
 				version: Version::new(2, 6, Some(4), Some(4)),
 				random: util::parse_hex("4FD62CDA69E235717E3BB94B").unwrap()
@@ -325,7 +368,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-WY0300-6huHF5Pr7Vde"),
 			Ok(PeerId {
-				name: "FireTorrent".to_string(),
+				name: Some("FireTorrent".to_string()),
 				name_short: "WY".to_string(),
 				version: Version::new(0, 3, Some(0), Some(0)),
 				random: b"6huHF5Pr7Vde".to_vec()
@@ -335,7 +378,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-KG2450-BDEw8OM14Hk6"),
 			Ok(PeerId {
-				name: "KGet".to_string(),
+				name: Some("KGet".to_string()),
 				name_short: "KG".to_string(),
 				version: Version::new(2, 4, Some(5), Some(0)),
 				random: b"BDEw8OM14Hk6".to_vec()
@@ -348,7 +391,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse_hex("2D4C50303330322D003833363536393537373030"),
 			Ok(PeerId {
-				name: "Lphant".to_string(),
+				name: Some("Lphant".to_string()),
 				name_short: "LP".to_string(),
 				version: Version::new(3, 2, None, None),
 				random: util::parse_hex("003833363536393537373030").unwrap()
@@ -361,7 +404,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-HL0290-xUO*9ugvENUE"),
 			Ok(PeerId {
-				name: "Halite".to_string(),
+				name: Some("Halite".to_string()),
 				name_short: "HL".to_string(),
 				version: Version::new(0, 2, Some(9), None),
 				random: b"xUO*9ugvENUE".to_vec()
@@ -371,7 +414,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-LK0140-ATIV~nbEQAMr"),
 			Ok(PeerId {
-				name: "linkage".to_string(),
+				name: Some("linkage".to_string()),
 				name_short: "LK".to_string(),
 				version: Version::new(0, 1, Some(4), None),
 				random: b"ATIV~nbEQAMr".to_vec()
@@ -381,7 +424,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-TT210w-dq!nWf~Qcext"),
 			Ok(PeerId {
-				name: "TuoTu".to_string(),
+				name: Some("TuoTu".to_string()),
 				name_short: "TT".to_string(),
 				version: Version::new(2, 1, Some(0), None),
 				random: b"dq!nWf~Qcext".to_vec()
@@ -392,7 +435,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse_hex("2D5554313730422D928446441DB0A094A01C01E5"),
 			Ok(PeerId {
-				name: "\u{00B5}Torrent".to_string(),
+				name: Some("\u{00B5}Torrent".to_string()),
 				name_short: "UT".to_string(),
 				version: Version::new(1, 7, Some(0), None),
 				random: util::parse_hex("928446441DB0A094A01C01E5").unwrap()
@@ -405,7 +448,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-ST0117-01234567890!"),
 			Ok(PeerId {
-				name: "SymTorrent".to_string(),
+				name: Some("SymTorrent".to_string()),
 				name_short: "ST".to_string(),
 				version: Version::new(1, 17, None, None),
 				random: b"01234567890!".to_vec()
@@ -418,7 +461,7 @@ mod tests {
 		// Style::Three without dash
 		/*
 		assert_eq!(PeerId::parse(b"-NE1090002IKyMn4g7Ko"), Ok(PeerId {
-			name: "BT Next Evolution".to_string(),
+			name: Some("BT Next Evolution".to_string()),
 			name_short: "NE".to_string(),
 			version: Version::new(1, 0, Some(9), None),
 			random: b"02IKyMn4g7Ko".to_vec()
@@ -428,7 +471,7 @@ mod tests {
 		// Style::SkipOneTwo without dash
 		/*
 		assert_eq!(PeerId::parse_hex("2D46473031383075F80057821359D64BB3DFD265"), Ok(PeerId {
-			name: "FlashGet".to_string(),
+			name: Some("FlashGet".to_string()),
 			name_short: "FG".to_string(),
 			version: Version::new(1, 80, None, None),
 			random: util::parse_hex("75F80057821359D64BB3DFD265").unwrap()
@@ -441,7 +484,7 @@ mod tests {
 		// TODO: A.B.C-D
 		/*
 		assert_eq!(PeerId::try_from(b"-PC251Q-6huHF5Pr7Vde"), Ok(PeerId {
-			name: "CacheLogic".to_string(),
+			name: Some("CacheLogic".to_string()),
 			name_short: "PC".to_string(),
 			version: todo!(),
 			random: todo!()
@@ -454,7 +497,7 @@ mod tests {
 		assert_eq!(
 			PeerId::parse(b"-GR6300-13s3iFKmbArc"),
 			Ok(PeerId {
-				name: "GetRight".to_string(),
+				name: Some("GetRight".to_string()),
 				name_short: "GR".to_string(),
 				version: Version::new(6, 3, None, None),
 				random: b"13s3iFKmbArc".to_vec()
@@ -465,77 +508,77 @@ mod tests {
 	// TODO: Support more peer ids
 	/*
 	assert_eq!(PeerId::parse(b"-AG2053-Em6o1EmvwLtD"), Ok(PeerId {
-		name: "Ares".to_string(),
+		name: Some("Ares".to_string()),
 		name_short: "AG".to_string(),
 		version: Version::new(2, 0, Some(5), None), // Are we sure it's not 2.0.5.3?
 		random: b"Em6o1EmvwLtD".to_vec()
 	}));
 
 	assert_eq!(PeerId::parse(b"-AR1670-3Ql6wM3hgtCc"), Ok(PeerId {
-		name: "Ares".to_string(),
+		name: Some("Ares".to_string()),
 		name_short: "AR".to_string(),
 		version: Version::new(1, 6, Some(7), Some(0)), // TODO: Are we sure it's not 1.6.7?
 		random: b"3Ql6wM3hgtCc".to_vec()
 	}));
 
 	assert_eq!(PeerId::try_from(b"-BR0332-!XVceSn(*KIl"), Ok(PeerId {
-		name: "BitRocket".to_string(),
+		name: Some("BitRocket".to_string()),
 		name_short: "BR".to_string(),
 		version: todo!(),
 		random: todo!()
 	}));
 
 	assert_eq!(PeerId::try_from(b"-KT11R1-693649213030"), Ok(PeerId {
-		name: "KTorrent".to_string(),
+		name: Some("KTorrent".to_string()),
 		name_short: "KT".to_string(),
 		version: todo!(),
 		random: b"693649213030".to_vec()
 	}));
 
 	assert_eq!(PeerId::try_from(<&[u8] as TryInto<&[u8; 20]>>::try_into(&util::parse_hex("2D4B543330302D006A7139727958377731756A4B").unwrap()).unwrap()), Ok(PeerId {
-		name: "KTorrent".to_string(),
+		name: Some("KTorrent".to_string()),
 		name_short: "KT".to_string(),
 		version: todo!(),
 		random: todo!()
 	}));
 
 	assert_eq!(PeerId::try_from(<&[u8] as TryInto<&[u8; 20]>>::try_into(&util::parse_hex("2D6C74304232302D0D739B93E6BE21FEBB557B20").unwrap()).unwrap()), Ok(PeerId {
-		name: "libTorrent (Rakshasa) / rTorrent*".to_string(),
+		name: Some("libTorrent (Rakshasa) / rTorrent*".to_string()),
 		name_short: "lt".to_string(),
 		version: todo!(),
 		random: util::parse_hex("739B93E6BE21FEBB557B20").unwrap()
 	}));
 
 	assert_eq!(PeerId::try_from(b"-LT0D00-eZ0PwaDDr-~v"), Ok(PeerId {
-		name: "libtorrent (Rasterbar)".to_string(),
+		name: Some("libtorrent (Rasterbar)".to_string()),
 		name_short: "LT".to_string(),
 		version: todo!(),
 		random: b"eZ0PwaDDr-~v".to_vec()
 	}));
 
 	assert_eq!(PeerId::try_from(<&[u8] as TryInto<&[u8; 20]>>::try_into(&util::parse_hex("2D4C57303030312D31E0B3A0B46F7D4E954F4103").unwrap()).unwrap()), Ok(PeerId {
-		name: "LimeWire".to_string(),
+		name: Some("LimeWire".to_string()),
 		name_short: "D4".to_string(),
 		version: todo!(),
 		random: todo!()
 	}));
 
 	assert_eq!(PeerId::try_from(b"-TR0006-01234567890!"), Ok(PeerId {
-		name: "Transmission".to_string(),
+		name: Some("Transmission".to_string()),
 		name_short: "TR".to_string(),
 		version: todo!(),
 		random: todo!()
 	}));
 
 	assert_eq!(PeerId::try_from(b"-TR072Z-zihst5yvg22f"), Ok(PeerId {
-		name: "Transmission".to_string(),
+		name: Some("Transmission".to_string()),
 		name_short: "TR".to_string(),
 		version: todo!(),
 		random: todo!()
 	}));
 
 	assert_eq!(PeerId::try_from(b"-TR0072-8vd6hrmp04an"), Ok(PeerId {
-		name: "Transmission".to_string(),
+		name: Some("Transmission".to_string()),
 		name_short: "TR".to_string(),
 		version: todo!(),
 		random: todo!()

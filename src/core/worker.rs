@@ -5,20 +5,31 @@ use tokio::sync::Mutex;
 
 use crate::{
 	core::{
+		bitfield::Bitfield,
 		block,
 		configuration::Configuration,
-		event::{Event, PieceEvent, TorrentEvent},
-		peer::{Peer, PeerError},
+		event::{
+			Event,
+			PieceEvent,
+			TorrentEvent
+		},
+		peer::{
+			Peer,
+			PeerError
+		},
 		piece,
 		piece_download::PieceDownload,
-		session::{self, EventSender, PeerPtr, PieceID, TorrentPtr},
+		session::{
+			EventSender,
+			PeerPtr,
+			PieceId,
+			TorrentPtr
+		},
 		torrent::Torrent,
 		util
 	},
 	protocol::wire::Message
 };
-
-use super::bitfield::Bitfield;
 
 #[derive(Error, Debug)]
 pub enum WorkerError {
@@ -42,7 +53,7 @@ pub struct Mode {
 
 #[derive(Default)]
 struct PieceIterator {
-	download: Option<(PieceID, Arc<Mutex<PieceDownload>>)>
+	download: Option<(PieceId, Arc<Mutex<PieceDownload>>)>
 }
 
 impl PieceIterator {
@@ -54,14 +65,14 @@ impl PieceIterator {
 		config: &Configuration,
 		torrent: &mut Torrent,
 		peer: &Peer
-	) -> Option<(Arc<Mutex<PieceDownload>>, PieceID, usize)> {
+	) -> Option<(Arc<Mutex<PieceDownload>>, PieceId, usize)> {
 		if let Some(v) = self.get(torrent).await {
 			Some(v)
 		} else {
 			let piece = torrent.picker.select_piece(torrent, peer);
 
 			self.download = piece.map(|piece| {
-				let piece_size = session::piece_size(piece, &torrent.meta_info);
+				let piece_size = util::piece_size(piece, &torrent.meta_info);
 
 				torrent.pieces[piece as usize].state = piece::State::Downloading;
 
@@ -81,7 +92,7 @@ impl PieceIterator {
 		}
 	}
 
-	async fn get(&self, torrent: &Torrent) -> Option<(Arc<Mutex<PieceDownload>>, PieceID, usize)> {
+	async fn get(&self, torrent: &Torrent) -> Option<(Arc<Mutex<PieceDownload>>, PieceId, usize)> {
 		if let Some((piece, ref download)) = self.download {
 			if let Some(block) = torrent.picker.select_block(&*download.lock().await) {
 				return Some((download.clone(), piece, block));
@@ -140,6 +151,7 @@ pub async fn run(
 			.collect::<Vec<u8>>()
 	);
 
+	log::debug!("[{pid}] Sending bitfield to peer");
 	peer.send(Message::Bitfield(bitfield)).await.unwrap();
 
 	// Send interested/unchoke messages on start
@@ -147,13 +159,13 @@ pub async fn run(
 		let mode = *mode_rx.borrow_and_update();
 
 		if mode.download {
-			log::trace!("[{pid}] Sending Message::Interested");
+			log::debug!("[{pid}] Sending interested message to peer");
 			peer.send(Message::Interested).await.unwrap();
 		}
 
 		/*
 		if mode.seed {
-			log::trace!("[{pid}] Sending Message::Unchoke");
+			log::debug!("[{pid}] Sending Message::Unchoke");
 			peer.send(Message::Unchoke).await.unwrap();
 		}
 		*/
@@ -167,7 +179,7 @@ pub async fn run(
 			message = message_send_rx.recv() => {
 				let message = message.unwrap();
 
-				log::trace!("[{pid}] forwarding message from block task {}", message);
+				log::trace!("[{pid}] Forwarding message from block task {}", message);
 				peer.send(message).await?;
 			},
 			// Forward messages to message_recv
@@ -175,7 +187,7 @@ pub async fn run(
 				let message = match message {
 					Ok(message) => message,
 					Err(error) => {
-						log::error!("[{pid}] failed to receive message: {}", util::error_chain(&error));
+						log::error!("[{pid}] Failed to receive message: {}", util::error_chain(&error));
 						return Err(WorkerError::PeerError(error));
 					}
 				};
@@ -187,16 +199,7 @@ pub async fn run(
 					maybe_blocks = true;
 				}
 
-				log::trace!("[{pid}] forwarding message to block task: {}", message);
-
-				if matches!(message, Message::KeepAlive) {
-					log::trace!("[{pid}] maybe_blocks={}, semaphore.available_permits={}, message_send_tx.receiver_count={} peer_choking={}",
-						maybe_blocks,
-						block_semaphore.available_permits(),
-						message_recv_tx.receiver_count(),
-						peer.peer_choking()
-					);
-				}
+				log::trace!("[{pid}] Forwarding message to block task: {}", message);
 
 				if message_recv_tx.send(message).is_err() {
 					log::trace!("[{pid}] no message receivers");
@@ -211,7 +214,7 @@ pub async fn run(
 				log::trace!("[{pid}] permit acquired");
 
 				let Some((download, piece, block)) = picker_iter.take(&config, &mut *torrent.write().await, &peer).await else {
-					log::trace!("[{pid}] no blocks to download");
+					log::debug!("[{pid}] no blocks to download");
 					maybe_blocks = false;
 					continue;
 				};
@@ -241,7 +244,7 @@ pub async fn run(
 					match result {
 						Ok(data) => {
 							lock.blocks[block].state = block::State::Done(data.clone());
-							event_tx.send(Event::TorrentEvent(torrent.clone(), TorrentEvent::PieceEvent(piece, PieceEvent::Block(block)))).unwrap();
+							event_tx.send(Event::TorrentEvent(torrent.read().await.id(), TorrentEvent::PieceEvent(piece, PieceEvent::Block(block)))).unwrap();
 
 							let blocks_total = lock.blocks().count();
 							let blocks_done = lock.blocks().filter(|block| matches!(block.state, block::State::Done(_))).count();
@@ -266,19 +269,19 @@ pub async fn run(
 			result = mode_rx.changed() => {
 				if result.is_err() {
 					// The session has shut down and we should exit gracefully
-					log::trace!("[{pid}] Worker channel closed, exiting...");
+					log::debug!("[{pid}] Worker channel closed, exiting...");
 					break Ok(());
 				} else {
 					let mode = *mode_rx.borrow();
 
 					if !mode.download && peer.am_interested() {
 						// We entered download mode and should inform the peer
-						log::trace!("[{pid}] Sending Message::Interested");
+						log::debug!("[{pid}] Sending Message::Interested");
 						peer.send(Message::Interested).await.unwrap();
 					} else if mode.download && !peer.am_interested() {
 						// We exited download mode and should inform the peer
 						// TODO: Cancel all instances of get_block
-						log::trace!("[{pid}] Sending Message::NotInterested");
+						log::debug!("[{pid}] Sending Message::NotInterested");
 						peer.send(Message::NotInterested).await.unwrap();
 					}
 
@@ -287,9 +290,11 @@ pub async fn run(
 					if mode.seed == true && peer.am_choking() == false {
 						// We entered seed mode and should inform the peer
 						// TODO: Implement a choking algorithm instead of unchoking all peers
+						log::debug!("[{pid}] Sending Message::Unchoke");
 						peer.send(Message::Unchoke).await.unwrap();
 					} else if mode.seed == false && peer.am_choking() == true {
 						// We exited seed mode and should inform the peer
+						log::debug!("[{pid}] Sending Message::Choke");
 						peer.send(Message::Choke).await.unwrap();
 					}
 					*/
@@ -304,12 +309,12 @@ pub async fn run(
 async fn get_block(
 	pid: String,
 	_permit: tokio::sync::OwnedSemaphorePermit,
-	piece: PieceID,
+	piece: PieceId,
 	piece_download: Arc<Mutex<PieceDownload>>,
 	block: usize,
 	message_tx: tokio::sync::mpsc::Sender<Message>,
 	mut message_rx: tokio::sync::broadcast::Receiver<Message>
-) -> (PieceID, usize, Result<Vec<u8>>) {
+) -> (PieceId, usize, Result<Vec<u8>>) {
 	let (block_begin, block_size) = {
 		let block = &mut piece_download.lock().await.blocks[block];
 		(block.begin, block.size)
@@ -332,7 +337,7 @@ async fn get_block(
 			Err(tokio::sync::broadcast::error::RecvError::Closed) => {
 				log::trace!("[{pid}] get_block shutting down");
 				break (piece, block, Err(WorkerError::Shutdown));
-			},
+			}
 			Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
 				log::error!("[{pid}] Peer lagged {} messages behind", count);
 
@@ -347,11 +352,11 @@ async fn get_block(
 				if index == piece && begin == block_begin && data.len() == block_size as usize =>
 			{
 				break (piece, block, Ok(data));
-			},
+			}
 			Message::Choke => {
 				log::warn!("[{pid}] Choked during download");
 				break (piece, block, Err(WorkerError::Choked));
-			},
+			}
 			_ => ()
 		}
 	};

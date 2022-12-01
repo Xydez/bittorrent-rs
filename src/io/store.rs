@@ -1,7 +1,17 @@
 use std::{
-	fs::{File, OpenOptions},
-	io::{Read, Seek, Write},
-	path::{Path, PathBuf}
+	fs::{
+		File,
+		OpenOptions
+	},
+	io::{
+		Read,
+		Seek,
+		Write
+	},
+	path::{
+		Path,
+		PathBuf
+	}
 };
 
 use crate::protocol::metainfo::MetaInfo;
@@ -226,7 +236,7 @@ impl Store for FileStore {
 
 #[cfg(test)]
 mod tests {
-	use super::{FileStore, Store};
+	use super::*;
 
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]

@@ -1,5 +1,6 @@
 #[derive(Debug, Clone)]
 pub struct Block {
+	/// State of the block
 	pub state: State,
 	/// First byte of the block
 	pub begin: u32,
@@ -12,5 +13,5 @@ pub struct Block {
 pub enum State {
 	Pending,
 	Downloading,
-	Done(Vec<u8>) // TODO: Not all blocks are BLOCK_SIZE, maybe use Vec instead
+	Done(Vec<u8>)
 }

@@ -1,4 +1,10 @@
-use crate::protocol::extensions::Extensions;
+use crate::protocol::{
+	extensions::Extensions,
+	peer_id::{
+		PeerId,
+		Version
+	}
+};
 
 /// Configuration of the session
 #[derive(Debug)]
@@ -13,6 +19,8 @@ pub struct Configuration {
 	pub concurrent_block_downloads: usize,
 	/// The maximum number of active piece verification jobs.
 	pub verification_jobs: usize,
+	/// The maximum number of attempts to announce the torrent
+	pub announce_retries: usize,
 	/// Peer id of the session.
 	pub peer_id: [u8; 20],
 	/// Extensions supported by the session.
@@ -29,8 +37,9 @@ impl Default for Configuration {
 			verification_jobs: std::thread::available_parallelism()
 				.map(std::num::NonZeroUsize::get)
 				.unwrap_or(8),
+			announce_retries: 5,
 			// TODO: Change to something sensible. Apparently some clients close the connection if they can't parse the peer id. Should use Azureus style.
-			peer_id: [b'x'; 20],
+			peer_id: PeerId::generate(*b"bt", Version::new(0, 1, None, None)), //[b'x'; 20],
 			extensions: Extensions([0; 8])
 		}
 	}

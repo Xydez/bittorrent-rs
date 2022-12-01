@@ -8,6 +8,6 @@ authors = { workspace = true }
 [dependencies]
 argh = "0.1.9"
 bittorrent = { path = ".." }
-flexi_logger = { workspace = true }
+flexi_logger = "0.24"
 log = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }

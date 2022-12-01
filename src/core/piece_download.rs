@@ -1,5 +1,8 @@
-use super::{
-	block::{self, Block},
+use crate::core::{
+	block::{
+		self,
+		Block
+	},
 	configuration::Configuration
 };
 
