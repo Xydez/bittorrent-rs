@@ -1,27 +1,15 @@
-use std::{
-	convert::TryInto,
-	net::SocketAddr
-};
+use std::{convert::TryInto, net::SocketAddr};
 
-use bytes::{
-	Buf,
-	BytesMut
-};
+use bytes::{Buf, BytesMut};
 use thiserror::Error;
 use tokio::{
-	io::{
-		AsyncReadExt,
-		AsyncWriteExt
-	},
+	io::{AsyncReadExt, AsyncWriteExt},
 	net::TcpStream
 };
 
 use crate::protocol::{
 	extensions::Extensions,
-	wire::message::{
-		self,
-		Message
-	}
+	wire::message::{self, Message}
 };
 
 const PROTOCOL: &[u8] = b"BitTorrent protocol";

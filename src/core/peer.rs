@@ -1,20 +1,13 @@
 use thiserror::Error;
 
 use crate::{
-	core::{
-		bitfield::Bitfield,
-		session::PieceId,
-		util
-	},
+	core::{bitfield::Bitfield, session::PieceId, util},
 	protocol::{
 		extensions::Extensions,
 		peer_id::PeerId,
 		wire::{
 			self,
-			connection::{
-				Handshake,
-				Wire
-			},
+			connection::{Handshake, Wire},
 			message::Message
 		}
 	}

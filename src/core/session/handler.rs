@@ -6,20 +6,13 @@ use tokio::sync::Mutex;
 
 use crate::{
 	core::{
-		event::{
-			Event,
-			PieceEvent,
-			TorrentEvent
-		},
+		event::{Event, PieceEvent, TorrentEvent},
 		peer::Peer,
 		piece,
 		session::Session,
 		util
 	},
-	protocol::wire::connection::{
-		Handshake,
-		Wire
-	}
+	protocol::wire::connection::{Handshake, Wire}
 };
 
 impl Session {

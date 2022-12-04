@@ -1,20 +1,10 @@
-use std::{
-	collections::HashMap,
-	sync::Arc
-};
+use std::{collections::HashMap, sync::Arc};
 
-use tokio::sync::{
-	Mutex,
-	RwLock,
-	Semaphore
-};
+use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use crate::core::{
 	configuration::Configuration,
-	event::{
-		Event,
-		TorrentEvent
-	},
+	event::{Event, TorrentEvent},
 	peer::Peer,
 	piece_download::PieceDownload,
 	torrent::Torrent

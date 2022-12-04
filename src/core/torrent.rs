@@ -1,12 +1,6 @@
 use std::{
-	collections::{
-		BTreeMap,
-		HashMap
-	},
-	sync::{
-		atomic::AtomicU32,
-		Arc
-	}
+	collections::{BTreeMap, HashMap},
+	sync::{atomic::AtomicU32, Arc}
 };
 
 use thiserror::Error;
@@ -17,30 +11,15 @@ use crate::{
 	core::{
 		algorithm::Picker,
 		configuration::Configuration,
-		piece::{
-			Piece,
-			Priority,
-			State
-		},
+		piece::{Piece, Priority, State},
 		piece_download::PieceDownload,
-		session::{
-			EventSender,
-			PeerPtr,
-			PieceId,
-			TorrentId,
-			TorrentPtr
-		},
-		util,
-		worker
+		session::{EventSender, PeerPtr, PieceId, TorrentId, TorrentPtr},
+		util, worker
 	},
 	io::store::Store,
 	protocol::{
 		metainfo::MetaInfo,
-		tracker::{
-			Announce,
-			Response,
-			Tracker
-		}
+		tracker::{Announce, Response, Tracker}
 	}
 };
 

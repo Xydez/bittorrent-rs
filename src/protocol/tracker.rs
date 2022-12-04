@@ -31,10 +31,7 @@
 
 use std::{
 	convert::TryFrom,
-	net::{
-		Ipv4Addr,
-		SocketAddrV4
-	},
+	net::{Ipv4Addr, SocketAddrV4},
 	time::Instant
 };
 

@@ -2,5 +2,4 @@ hard_tabs = true
 trailing_comma = "Never"
 newline_style = "Windows"
 group_imports = "StdExternalCrate"
-imports_layout = "Vertical"
 imports_granularity = "Crate"

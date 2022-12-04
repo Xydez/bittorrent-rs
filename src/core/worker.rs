@@ -8,23 +8,11 @@ use crate::{
 		bitfield::Bitfield,
 		block,
 		configuration::Configuration,
-		event::{
-			Event,
-			PieceEvent,
-			TorrentEvent
-		},
-		peer::{
-			Peer,
-			PeerError
-		},
+		event::{Event, PieceEvent, TorrentEvent},
+		peer::{Peer, PeerError},
 		piece,
 		piece_download::PieceDownload,
-		session::{
-			EventSender,
-			PeerPtr,
-			PieceId,
-			TorrentPtr
-		},
+		session::{EventSender, PeerPtr, PieceId, TorrentPtr},
 		torrent::Torrent,
 		util
 	},

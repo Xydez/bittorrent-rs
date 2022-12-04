@@ -1,12 +1,6 @@
-use std::{
-	convert::TryFrom,
-	io::Read
-};
+use std::{convert::TryFrom, io::Read};
 
-use serde::{
-	Deserialize,
-	Serialize
-};
+use serde::{Deserialize, Serialize};
 use sha1::Digest;
 use thiserror::Error;
 
@@ -119,10 +113,7 @@ pub struct FileInfo {
 }
 
 mod raw {
-	use serde::{
-		Deserialize,
-		Serialize
-	};
+	use serde::{Deserialize, Serialize};
 
 	#[derive(Debug, Deserialize)]
 	pub struct MetaInfo {

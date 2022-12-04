@@ -1,8 +1,5 @@
 use crate::core::{
-	block::{
-		self,
-		Block
-	},
+	block::{self, Block},
 	configuration::Configuration
 };
 

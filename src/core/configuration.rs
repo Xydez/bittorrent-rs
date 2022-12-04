@@ -1,9 +1,6 @@
 use crate::protocol::{
 	extensions::Extensions,
-	peer_id::{
-		PeerId,
-		Version
-	}
+	peer_id::{PeerId, Version}
 };
 
 /// Configuration of the session

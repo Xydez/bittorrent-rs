@@ -3,11 +3,7 @@ use std::path::PathBuf;
 use argh::FromArgs;
 use bittorrent::{
 	core::{
-		event::{
-			Event,
-			PieceEvent,
-			TorrentEvent
-		},
+		event::{Event, PieceEvent, TorrentEvent},
 		piece::State
 	},
 	prelude::*

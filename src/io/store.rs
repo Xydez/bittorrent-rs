@@ -1,27 +1,11 @@
 use std::{
-	fs::{
-		File,
-		OpenOptions
-	},
-	hash::{
-		Hash,
-		Hasher
-	},
-	io::{
-		Read,
-		Seek,
-		Write
-	},
-	path::{
-		Path,
-		PathBuf
-	}
+	fs::{File, OpenOptions},
+	hash::{Hash, Hasher},
+	io::{Read, Seek, Write},
+	path::{Path, PathBuf}
 };
 
-use crate::{
-	core::torrent::ResumeData,
-	protocol::metainfo::MetaInfo
-};
+use crate::{core::torrent::ResumeData, protocol::metainfo::MetaInfo};
 
 pub trait Store: std::fmt::Debug + Send {
 	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Box<dyn std::error::Error>>;

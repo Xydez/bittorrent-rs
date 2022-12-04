@@ -4,19 +4,11 @@
 // https://www.researchgate.net/publication/223808116_Implementation_and_analysis_of_the_BitTorrent_protocol_with_a_multi-agent_model
 // https://www.researchgate.net/figure/Implementation-of-the-choking-algorithm_fig3_223808116
 
-use rand::seq::{
-	IteratorRandom,
-	SliceRandom
-};
+use rand::seq::{IteratorRandom, SliceRandom};
 use tap::Tap;
 
 use crate::core::{
-	block,
-	peer::Peer,
-	piece,
-	piece_download::PieceDownload,
-	session::PieceId,
-	torrent::Torrent
+	block, peer::Peer, piece, piece_download::PieceDownload, session::PieceId, torrent::Torrent
 };
 
 #[derive(Debug)]
