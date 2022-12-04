@@ -85,11 +85,11 @@ impl Version {
 
 	pub fn parse(digits: &[u8], style: Style) -> Result<Version> {
 		fn ctoi(c: u8) -> Result<u8> {
-			Ok((c as char).to_digit(10).ok_or(ParseError::Invalid)? as u8)
+			Ok((c as char).to_digit(10).ok_or(Error::Invalid)? as u8)
 		}
 
 		fn ctoix(c: u8) -> Result<u8> {
-			Ok((c as char).to_digit(16).ok_or(ParseError::Invalid)? as u8)
+			Ok((c as char).to_digit(16).ok_or(Error::Invalid)? as u8)
 		}
 
 		Ok(match style {
@@ -153,7 +153,7 @@ impl Version {
 				patch: None,
 				build: None
 			},
-			Style::Unknown(_) => return Err(ParseError::UnknownFormat)
+			Style::Unknown(_) => return Err(Error::UnknownFormat)
 		})
 	}
 }
@@ -163,10 +163,10 @@ impl std::fmt::Display for Version {
 		write!(f, "{}.{}", self.major, self.minor)?;
 
 		if let Some(patch) = self.patch {
-			write!(f, ".{}", patch)?;
+			write!(f, ".{patch}")?;
 
 			if let Some(build) = self.build {
-				write!(f, ".{}", build)?;
+				write!(f, ".{build}")?;
 			}
 		}
 
@@ -211,7 +211,7 @@ impl PeerId {
 
 	pub fn parse(value: &[u8; 20]) -> Result<Self> {
 		if value.len() != 20 {
-			return Err(ParseError::Invalid);
+			return Err(Error::Invalid);
 		}
 
 		// Azureus-style uses the following encoding: '-', two characters for client id, four ascii digits for version number, '-', followed by random numbers.
@@ -228,8 +228,8 @@ impl PeerId {
 			let client = CLIENTS
 				.iter()
 				.find(|client| client.short == name_short)
-				.ok_or(ParseError::UnknownClient(
-					String::from_utf8(name_short.to_vec()).map_err(|_| ParseError::Invalid)?
+				.ok_or(Error::UnknownClient(
+					String::from_utf8(name_short.to_vec()).map_err(|_| Error::Invalid)?
 				))?;
 
 			let version = Version::parse(digits, client.style.clone())?;
@@ -244,24 +244,19 @@ impl PeerId {
 
 		// Shadow's style uses the following encoding: one ascii alphanumeric for client identification, up to five characters for version number (padded with '-' if less than five), followed by three characters (commonly '---', but not always the case), followed by random characters. Each character in the version string represents a number from 0 to 63. '0'=0, ..., '9'=9, 'A'=10, ..., 'Z'=35, 'a'=36, ..., 'z'=61, '.'=62, '-'=63.
 
-		Err(ParseError::UnknownFormat)
+		Err(Error::UnknownFormat)
 	}
 
 	pub fn parse_str(value: &str) -> Result<Self> {
-		Self::parse(
-			value
-				.as_bytes()
-				.try_into()
-				.map_err(|_| ParseError::Invalid)?
-		)
+		Self::parse(value.as_bytes().try_into().map_err(|_| Error::Invalid)?)
 	}
 
 	pub fn parse_hex(value: &str) -> Result<Self> {
 		Self::parse(
 			&util::parse_hex(value)
-				.map_err(|_| ParseError::Invalid)?
+				.map_err(|_| Error::Invalid)?
 				.try_into()
-				.map_err(|_| ParseError::Invalid)?
+				.map_err(|_| Error::Invalid)?
 		)
 	}
 }
@@ -278,7 +273,7 @@ impl std::fmt::Display for PeerId {
 }
 
 #[derive(Error, Debug, PartialEq)]
-pub enum ParseError {
+pub enum Error {
 	#[error("The Peer ID is of an unknown format")]
 	UnknownFormat,
 	#[error("The Peer ID could not be parsed because the client '{0}' is unknown")]
@@ -287,7 +282,7 @@ pub enum ParseError {
 	Invalid
 }
 
-pub type Result<T> = std::result::Result<T, ParseError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 struct Client {
 	pub short: Vec<u8>,

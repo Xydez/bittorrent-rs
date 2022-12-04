@@ -28,28 +28,26 @@ use crate::{
 		torrent::Torrent,
 		util
 	},
-	protocol::wire::Message
+	protocol::wire::message::Message
 };
 
 #[derive(Error, Debug)]
-pub enum WorkerError {
+pub enum Error {
 	#[error("Request timed out")]
 	Timeout(#[from] tokio::time::error::Elapsed),
-	#[error("Choked during download")]
-	Choked,
 	#[error("An error occurred while communicating with the peer")]
-	PeerError(#[from] PeerError),
-	#[error("Peer is shutting down")]
-	Shutdown
+	PeerError(#[from] PeerError)
 }
 
-pub type Result<T> = std::result::Result<T, WorkerError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Mode {
 	pub download: bool,
 	pub seed: bool
 }
+
+// TODO: Use a smarter solution than PieceIterator which is utter garbage
 
 #[derive(Default)]
 struct PieceIterator {
@@ -60,6 +58,8 @@ impl PieceIterator {
 	// TODO: Since we only use `&Peer` and `&mut Torrent` in one codepath maybe
 	//       it should be a PeerPtr but in order to do that we need to stop
 	//       having the peer constantly locked in spawn
+
+	/// Finds a block to download in a PieceDownload
 	pub async fn take(
 		&mut self,
 		config: &Configuration,
@@ -124,7 +124,7 @@ pub async fn run(
 
 	// Keeps track of the current piece download
 	let mut picker_iter = PieceIterator::default();
-	let mut block_tasks = tokio::task::JoinSet::new();
+	let mut block_tasks = tokio_util::task::JoinMap::new();
 
 	// True if we need to check whether there are downloadable blocks in the current download
 	// False until we receive a bitfield from the peer
@@ -188,7 +188,7 @@ pub async fn run(
 					Ok(message) => message,
 					Err(error) => {
 						log::error!("[{pid}] Failed to receive message: {}", util::error_chain(&error));
-						return Err(WorkerError::PeerError(error));
+						return Err(Error::PeerError(error));
 					}
 				};
 
@@ -219,32 +219,37 @@ pub async fn run(
 					continue;
 				};
 
-				download.lock().await.blocks[block].state = block::State::Downloading;
+				let block_region = {
+					let block = &mut download.lock().await.blocks[block];
+
+					block.state = block::State::Downloading;
+					(block.begin, block.size)
+				};
 
 				log::trace!("[{pid}] starting get_block");
 				block_tasks.spawn(
-					get_block(
+					(piece, block),
+					block_worker::get_block(
 						pid.clone(),
 						permit.unwrap(),
 						piece,
-						download.clone(),
-						block,
+						block_region,
 						message_send_tx.clone(),
 						message_recv_tx.subscribe(),
 					)
 				);
 			},
 			// Receive the data from completed get_block tasks
-			Some(result) = block_tasks.join_next(), if !block_tasks.is_empty() => match result {
-				Err(err) => panic!("get_block panicked: {}", err),
-				Ok((piece, block, result)) => {
-					let piece_download = torrent.read().await.downloads[&piece].clone();
-					let mut lock = piece_download.lock().await;
+			Some(((piece, block), result)) = block_tasks.join_next(), if !block_tasks.is_empty() => {
+				let download = torrent.read().await.downloads[&piece].clone();
 
-					match result {
-						Ok(data) => {
+				// TODO: Make sure get_block cannot panic
+				match result.unwrap() {
+					Ok(data) => {
+						{
+							let mut lock = download.lock().await;
+
 							lock.blocks[block].state = block::State::Done(data.clone());
-							event_tx.send(Event::TorrentEvent(torrent.read().await.id(), TorrentEvent::PieceEvent(piece, PieceEvent::Block(block)))).unwrap();
 
 							let blocks_total = lock.blocks().count();
 							let blocks_done = lock.blocks().filter(|block| matches!(block.state, block::State::Done(_))).count();
@@ -257,11 +262,14 @@ pub async fn run(
 								piece, block_begin, block_begin + block_size,
 								blocks_done, blocks_total
 							);
-						},
-						Err(err) => {
-							lock.blocks[block].state = block::State::Pending;
-							log::error!("[{pid}] get_blocked errored: {}", err);
 						}
+
+						event_tx.send(Event::TorrentEvent(torrent.read().await.id(), TorrentEvent::PieceEvent(piece, PieceEvent::Block(block)))).unwrap();
+					},
+					Err(err) => {
+						download.lock().await.blocks[block].state = block::State::Pending;
+
+						log::error!("[{pid}] get_blocked errored: {}", util::error_chain(err));
 					}
 				}
 			},
@@ -306,69 +314,4 @@ pub async fn run(
 	}
 }
 
-async fn get_block(
-	pid: String,
-	_permit: tokio::sync::OwnedSemaphorePermit,
-	piece: PieceId,
-	piece_download: Arc<Mutex<PieceDownload>>,
-	block: usize,
-	message_tx: tokio::sync::mpsc::Sender<Message>,
-	mut message_rx: tokio::sync::broadcast::Receiver<Message>
-) -> (PieceId, usize, Result<Vec<u8>>) {
-	let (block_begin, block_size) = {
-		let block = &mut piece_download.lock().await.blocks[block];
-		(block.begin, block.size)
-	};
-
-	log::trace!(
-		"[{pid}] Requesting piece {} block {}-{}",
-		piece,
-		block_begin,
-		block_begin + block_size
-	);
-	message_tx
-		.send(Message::Request(piece, block_begin, block_size))
-		.await
-		.unwrap();
-
-	let result = loop {
-		let message = match message_rx.recv().await {
-			Ok(message) => message,
-			Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-				log::trace!("[{pid}] get_block shutting down");
-				break (piece, block, Err(WorkerError::Shutdown));
-			}
-			Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
-				log::error!("[{pid}] Peer lagged {} messages behind", count);
-
-				// Only setting state because we panic after
-				piece_download.lock().await.blocks[block].state = block::State::Pending;
-				panic!("Peer lagged {} messages behind", count);
-			}
-		};
-
-		match message {
-			Message::Piece(index, begin, data)
-				if index == piece && begin == block_begin && data.len() == block_size as usize =>
-			{
-				break (piece, block, Ok(data));
-			}
-			Message::Choke => {
-				log::warn!("[{pid}] Choked during download");
-				break (piece, block, Err(WorkerError::Choked));
-			}
-			_ => ()
-		}
-	};
-
-	{
-		let mut lock = piece_download.lock().await;
-
-		lock.blocks[block].state = match result.2 {
-			Ok(ref data) => block::State::Done(data.clone()),
-			Err(_) => block::State::Pending
-		};
-	}
-
-	result
-}
+mod block_worker;

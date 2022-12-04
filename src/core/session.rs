@@ -24,8 +24,8 @@ use crate::core::{
 
 #[derive(Debug)]
 enum Command {
-	AddTorrent(Torrent, tokio::sync::oneshot::Sender<TorrentPtr>),
-	GetTorrent(TorrentId, tokio::sync::oneshot::Sender<TorrentPtr>),
+	AddTorrent(tokio::sync::oneshot::Sender<TorrentPtr>, Torrent),
+	GetTorrent(tokio::sync::oneshot::Sender<TorrentPtr>, TorrentId),
 	GetConfig(tokio::sync::oneshot::Sender<Arc<Configuration>>),
 	Shutdown
 }
@@ -51,17 +51,19 @@ impl SessionHandle {
 	pub async fn add_torrent(&self, torrent: Torrent) -> TorrentPtr {
 		let (tx, rx) = tokio::sync::oneshot::channel();
 
-		self.cmd_tx.send(Command::AddTorrent(torrent, tx)).unwrap();
+		self.cmd_tx.send(Command::AddTorrent(tx, torrent)).unwrap();
 
 		rx.await.unwrap()
 	}
 
 	/// Get a [`TorrentPtr`] from a [`TorrentId`]
+	///
+	/// TODO: Should return an Option
 	pub async fn torrent(&self, torrent_id: TorrentId) -> TorrentPtr {
 		let (tx, rx) = tokio::sync::oneshot::channel();
 
 		self.cmd_tx
-			.send(Command::GetTorrent(torrent_id, tx))
+			.send(Command::GetTorrent(tx, torrent_id))
 			.unwrap();
 
 		rx.await.unwrap()
@@ -174,8 +176,8 @@ impl Session {
 				command = self.cmd_rx.recv() => {
 					if let Some(command) = command {
 						match command {
-							Command::AddTorrent(torrent, sender) => sender.send(self.add_torrent(torrent)).unwrap(),
-							Command::GetTorrent(torrent_id, sender) => sender.send(self.torrents[&torrent_id].clone()).unwrap(),
+							Command::AddTorrent(sender, torrent) => sender.send(self.add_torrent(torrent)).unwrap(),
+							Command::GetTorrent(sender, torrent_id) => sender.send(self.torrents[&torrent_id].clone()).unwrap(),
 							Command::GetConfig(sender) => sender.send(self.config.clone()).unwrap(),
 							Command::Shutdown => self.tx.send(Event::Stopped).unwrap()
 						}

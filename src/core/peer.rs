@@ -10,10 +10,12 @@ use crate::{
 		extensions::Extensions,
 		peer_id::PeerId,
 		wire::{
-			Handshake,
-			Message,
-			Wire,
-			WireError
+			self,
+			connection::{
+				Handshake,
+				Wire
+			},
+			message::Message
 		}
 	}
 };
@@ -21,10 +23,10 @@ use crate::{
 #[derive(Error, Debug)]
 pub enum PeerError {
 	#[error("An error occurred within the wire protocol.")]
-	WireError(#[from] WireError)
+	WireError(#[from] wire::connection::Error)
 }
 
-pub(crate) type Result<T> = std::result::Result<T, PeerError>;
+pub type Result<T> = std::result::Result<T, PeerError>;
 
 /// Abstraction of Wire that maintains peer state
 #[derive(Debug)]

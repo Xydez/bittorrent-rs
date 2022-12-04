@@ -1,5 +1,5 @@
 [workspace]
-members = ["bittorrent-cli"]
+members = ["bittorrent-cli"] # "bittorrent-webui"
 
 [workspace.package]
 version = "0.1.0"
@@ -18,11 +18,14 @@ edition = { workspace = true }
 authors = { workspace = true }
 
 [features]
+default = ["resume"]
 io-tests = []
 net-tests = []
+resume = ["bincode"]
 
 [dependencies]
 # Crate dependencies
+bincode = { version = "1.3.3", optional = true }
 bytes = "1.3"
 lazy_static = "1.4"
 paste = "1.0"
@@ -36,6 +39,7 @@ serde_json = "1.0"
 sha1 = "0.10"
 tap = "1.0"
 thiserror = "1.0"
+tokio-util = { version = "0.7.4", features = ["rt"] }
 
 # Workspace dependencies
 log = { workspace = true }

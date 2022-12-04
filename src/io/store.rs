@@ -3,6 +3,10 @@ use std::{
 		File,
 		OpenOptions
 	},
+	hash::{
+		Hash,
+		Hasher
+	},
 	io::{
 		Read,
 		Seek,
@@ -14,11 +18,17 @@ use std::{
 	}
 };
 
-use crate::protocol::metainfo::MetaInfo;
+use crate::{
+	core::torrent::ResumeData,
+	protocol::metainfo::MetaInfo
+};
 
 pub trait Store: std::fmt::Debug + Send {
 	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
 	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>>;
+
+	/// Calculate the checksum of all existing pieces in the store
+	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>>;
 }
 
 #[derive(Debug)]
@@ -31,6 +41,10 @@ impl Store for NullStore {
 
 	fn set(&mut self, _piece: usize, _data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
 		Ok(())
+	}
+
+	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
+		unimplemented!("NullStore cannot calculate a checksum");
 	}
 }
 
@@ -58,13 +72,25 @@ impl Store for MemoryStore {
 
 		Ok(())
 	}
+
+	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+		for piece in self.data.iter().filter_map(|val| val.as_ref()) {
+			piece.hash(&mut hasher);
+		}
+
+		Ok(hasher.finish())
+	}
 }
 
 #[derive(Debug)]
 pub struct FileStore {
-	files: Vec<(usize, PathBuf, File)>,
 	piece_length: usize,
-	has_pieces: Vec<bool>
+	pub(crate) directory: PathBuf,
+	/// Opened files within the store and path not including base directory
+	files: Vec<(usize, PathBuf, File)>,
+	pub(crate) has_pieces: Vec<bool>
 }
 
 impl FileStore {
@@ -73,19 +99,22 @@ impl FileStore {
 	/// The total length is calculated from the sum of the file sizes
 	pub fn new(
 		piece_length: usize,
+		directory: impl AsRef<Path>,
 		files: impl IntoIterator<Item = (usize, PathBuf)>
 	) -> std::io::Result<FileStore> {
 		let files = files
 			.into_iter()
 			.map(|(length, path)| {
+				let full_path = std::path::Path::new(directory.as_ref()).join(&path);
+
 				(
 					length,
-					path.clone(),
+					path,
 					OpenOptions::new()
 						.read(true)
 						.write(true)
 						.create(true)
-						.open(path)
+						.open(full_path)
 				)
 			})
 			.map(|(length, path, result)| result.map(|value| (length, path, value)))
@@ -102,6 +131,7 @@ impl FileStore {
 
 		Ok(FileStore {
 			piece_length,
+			directory: directory.as_ref().to_path_buf(),
 			files,
 			has_pieces
 		})
@@ -114,18 +144,34 @@ impl FileStore {
 	) -> std::io::Result<FileStore> {
 		FileStore::new(
 			meta_info.piece_size,
-			meta_info.files.iter().map(|file| {
-				(
-					file.length,
-					std::path::Path::new(directory.as_ref()).join(&file.path)
-				)
-			})
+			directory,
+			meta_info
+				.files
+				.iter()
+				.map(|file| (file.length, file.path.clone()))
 		)
+	}
+
+	#[cfg(feature = "resume")]
+	pub fn resume(
+		directory: impl AsRef<Path>,
+		resume_data: ResumeData
+	) -> Result<FileStore, crate::core::torrent::ResumeError> {
+		use crate::core::torrent::ResumeError;
+
+		let mut store = Self::from_meta_info(directory, resume_data.meta_info)?;
+		store.has_pieces = resume_data.pieces.clone();
+
+		if resume_data.checksum != store.checksum()? {
+			Err(ResumeError::InvalidChecksum)
+		} else {
+			Ok(store)
+		}
 	}
 
 	pub fn destroy(self) -> std::io::Result<()> {
 		for (_, path, _) in self.files {
-			std::fs::remove_file(path)?;
+			std::fs::remove_file(self.directory.join(path))?;
 		}
 
 		Ok(())
@@ -232,6 +278,18 @@ impl Store for FileStore {
 
 		Ok(Some(data))
 	}
+
+	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+		for i in 0..self.has_pieces.len() {
+			if let Some(data) = self.get(i)? {
+				data.hash(&mut hasher);
+			}
+		}
+
+		Ok(hasher.finish())
+	}
 }
 
 #[cfg(test)]
@@ -241,7 +299,8 @@ mod tests {
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn single_file() {
-		let mut store = FileStore::new(7, vec![(21, "test_single_file.txt".into())]).unwrap();
+		let mut store =
+			FileStore::new(7, ".test_dir", vec![(21, "test_single_file.txt".into())]).unwrap();
 
 		for i in 0..3 {
 			store.set(i, b"testing").unwrap();
@@ -257,8 +316,12 @@ mod tests {
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn single_file_last_piece() {
-		let mut store =
-			FileStore::new(7, vec![(18, "test_single_file_last_piece.txt".into())]).unwrap();
+		let mut store = FileStore::new(
+			7,
+			".test_dir",
+			vec![(18, "test_single_file_last_piece.txt".into())]
+		)
+		.unwrap();
 
 		for i in 0..2 {
 			store.set(i, b"testing").unwrap();
@@ -280,6 +343,7 @@ mod tests {
 	fn multi_file() {
 		let mut store = FileStore::new(
 			7,
+			".test_dir",
 			vec![
 				(10, "test_multi_file_a.txt".into()),
 				(8, "test_multi_file_b.txt".into()),

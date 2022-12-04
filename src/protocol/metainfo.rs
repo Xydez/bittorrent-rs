@@ -3,11 +3,15 @@ use std::{
 	io::Read
 };
 
+use serde::{
+	Deserialize,
+	Serialize
+};
 use sha1::Digest;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum MetaInfoError {
+pub enum Error {
 	#[error("An IO error occurred")]
 	IOError(#[from] std::io::Error),
 	#[error("Failed to serialize or deserialize bencode")]
@@ -16,9 +20,9 @@ pub enum MetaInfoError {
 	InvalidMetaInfo
 }
 
-pub type Result<T> = std::result::Result<T, MetaInfoError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetaInfo {
 	pub name: String,
 	pub length: usize,
@@ -31,7 +35,7 @@ pub struct MetaInfo {
 }
 
 impl TryFrom<&[u8]> for MetaInfo {
-	type Error = MetaInfoError;
+	type Error = Error;
 
 	/// Load the MetaInfo from raw bencode
 	fn try_from(buf: &[u8]) -> Result<Self> {
@@ -45,7 +49,7 @@ impl TryFrom<&[u8]> for MetaInfo {
 			.info
 			.pieces
 			.chunks_exact(20)
-			.map(|chunk| <[u8; 20]>::try_from(chunk).map_err(|_| MetaInfoError::InvalidMetaInfo))
+			.map(|chunk| <[u8; 20]>::try_from(chunk).map_err(|_| Error::InvalidMetaInfo))
 			.collect::<Result<Vec<[u8; 20]>>>()?;
 
 		let files = match metadata.info.files {
@@ -67,7 +71,7 @@ impl TryFrom<&[u8]> for MetaInfo {
 				file_infos
 			}
 			None => match metadata.info.length {
-				None => return Err(MetaInfoError::InvalidMetaInfo),
+				None => return Err(Error::InvalidMetaInfo),
 				Some(length) => vec![FileInfo {
 					path: metadata.info.name.clone().into(),
 					length,
@@ -107,7 +111,7 @@ impl MetaInfo {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileInfo {
 	pub path: std::path::PathBuf,
 	pub length: usize,

@@ -20,6 +20,10 @@ struct Args {
 	#[argh(positional)]
 	torrent: String,
 
+	/// should the client skip reading and writing resume data
+	#[argh(switch)]
+	skip_resume: bool,
+
 	/// download directory, defaults to the current dir
 	#[argh(option, default = "\"downloads\".into()")]
 	dir: PathBuf
@@ -43,12 +47,59 @@ async fn main() {
 
 	let (session, mut rx) = Session::spawn();
 
-	let meta_info = MetaInfo::load(&args.torrent).unwrap();
-	std::fs::create_dir_all(args.dir.clone()).unwrap();
-	let store = FileStore::from_meta_info(&args.dir, &meta_info).unwrap();
+	let resume_file = std::path::Path::new(&args.torrent).with_extension("resume");
+
+	// Attempt to resume a previous instance
+	let torrent = match if args.skip_resume {
+		None
+	} else {
+		Some(std::fs::File::open(&resume_file).map(|file| {
+			Torrent::deserialize_from(file, |resume_data| {
+				FileStore::resume(&args.dir, resume_data).unwrap()
+			})
+		}))
+	} {
+		Some(Ok(Ok(value))) => {
+			log::info!(
+				"Resume data was loaded, {}/{} pieces done",
+				value.complete_pieces().count(),
+				value.pieces.len()
+			);
+			value
+		}
+		None | Some(Err(_)) | Some(Ok(Err(_))) => {
+			if !args.skip_resume {
+				log::info!("No resume data could be loaded");
+			}
+
+			let meta_info = MetaInfo::load(&args.torrent).unwrap();
+			std::fs::create_dir_all(args.dir.clone()).unwrap();
+			let store = FileStore::from_meta_info(&args.dir, &meta_info).unwrap();
+
+			Torrent::new(meta_info, store)
+		}
+	};
 
 	// TODO: We can remove the need for async if we convert it to TorrentPtr in SessionHandle
-	let torrent = session.add_torrent(Torrent::new(meta_info, store)).await;
+	let torrent = session.add_torrent(torrent).await;
+
+	{
+		let torrent = torrent.clone();
+		let resume_file = resume_file.clone();
+
+		ctrlc::set_handler(move || {
+			log::info!("CTRL+C pressed");
+
+			if !args.skip_resume {
+				log::info!("Writing resume data...");
+				let mut file = std::fs::File::create(&resume_file).unwrap();
+				torrent.blocking_read().serialize_into(&mut file).unwrap();
+			}
+
+			std::process::exit(0);
+		})
+		.unwrap();
+	}
 
 	loop {
 		let event = match rx.recv().await {
@@ -100,4 +151,14 @@ async fn main() {
 	}
 
 	session.join().await;
+
+	if !args.skip_resume {
+		log::info!("Writing resume data...");
+		let mut file = std::fs::File::create(&resume_file).unwrap();
+		tokio::task::spawn_blocking(move || {
+			torrent.blocking_read().serialize_into(&mut file).unwrap()
+		})
+		.await
+		.unwrap();
+	}
 }

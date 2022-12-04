@@ -1,4 +1,9 @@
-#[derive(Debug, Clone)]
+use serde::{
+	Deserialize,
+	Serialize
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Piece {
 	pub priority: Priority,
 	pub state: State,
@@ -16,7 +21,7 @@ impl Default for Piece {
 }
 
 /// How peer workers should prioritize a piece
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Priority {
 	/// All other pieces MUST have the state `State::Done` before pieces with priority `Priority::Lowest` MAY start downloading
 	Lowest,
@@ -31,7 +36,7 @@ pub enum Priority {
 }
 
 /// The state of a piece
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum State {
 	/// The piece is ignored and should not be downloaded
 	Ignore,

@@ -21,7 +21,7 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * https://github.com/webtor-io/content-transcoder
 * https://www.bittorrent.org/beps/bep_0009.html
 * https://www.bittorrent.org/beps/bep_0010.html
-* http://conferences.sigcomm.org/imc/2006/papers/p20-legout.pdf
+* Descriptions of algorithms in the paper [Rarest First and Choke Algorithms Are Enough - Section 2.2](http://conferences.sigcomm.org/imc/2006/papers/p20-legout.pdf)
 
 ## Coding guidelines
 * `use super::..` is forbidden outside test modules
@@ -39,18 +39,22 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
   * Investigate [tokio::io::split](https://docs.rs/tokio/1.21.2/tokio/io/fn.split.html) to split read/write streams
   * Investigate [tokio_util::codec](https://docs.rs/tokio-util/0.6.10/tokio_util/codec/index.html)
 * Investigate [tracing](https://lib.rs/crates/tracing) for better logging
-* Investigate using cargo-audit and cargo-deny to use secure libraries with correct licenses (see [rustsec](https://rustsec.org/))
-* We could use [dashmap](https://lib.rs/crates/dashmap) for better performance
-  * Create an optimization heading?
+
+### Optimization
+* Unix: Use `pwritev` in the [*nix](https://lib.rs/crates/nix) crate
+  * The difference between `write` and `writev` is that `writev` writes multiple buffers into one contiguous slice in the file, which removes the need to copy to a new buffer before writing
+  * The difference between `write` and `pwrite` is that `pwrite` specifies the offset, which means `seek` does not need to be called, halving the amount of system calls
+* Maybe use [dashmap](https://lib.rs/crates/dashmap) for better performance
+* Check if we should `Weak` instead of `Arc` for some things that should not be kept alive
 
 ### Features
+* ~~Write and use [peer_id](src/protocol/peer_id.rs)~~
+* ~~Resuming downloads~~
+  * ~~Keep resume data in a file beside the torrent (<torrent_name>.resume)~~
 * Generic `StoreWriter` to write to the store more efficiently (buffered writes / write_vectored?)
-  * Unix: Use `pwritev` in [*nix](https://lib.rs/crates/nix)
 * Magnet links
 * Allow requesting specific byte ranges from the torrent, and the client will prioritize those pieces
-* Write and use [peer_id](src/protocol/peer_id.rs)
-* Resuming downloads
-  * Keep resume data in a file beside the torrent (<torrent_name>.resume)
+* Allow setting modes
 * Document all the code
 
 ### Changes
@@ -68,11 +72,13 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
   * This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways
 * Rename maybe_blocks in worker to "out_of_blocks" or something which is clearer
 * Don't connect to all peers received in Announce (See inofficial spec)
-  * Only actively form connections if client has less than 30 peers
-  * Refuse connections after client has a maximum of 55 peers
+  * Follow the recommendations
+    * Only actively form connections if client has less than 30 peers
+    * Refuse connections after client has a maximum of 55 peers
   * PeerConnected messages
-* Use `Weak` instead of `Arc` for things that should not be kept alive
 * Make a lot of things pub(crate) instead of pub
+* Properly manage the tasks of peer workers
+  * We can join the workers in the event loop
 
 ### Notes
 * Make sure all Worker in session.peers are alive
@@ -80,25 +86,15 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 * Make sure piece.availability is updated
 * Send `bittorrent::wire::Message::Cancel` if session shuts down during download
 * Announce started/completed/stopped to tracker
-
-## Active projects
-### Rewrite peer_worker
-We want to weave all requests in one, so basically we have a thread that loops and receives all requests for a peer and uses broadcast to dispatch them to the right task. Using select we also receive commands which tell us to choke / unchoke the peer. So basically one big peer worker with a task that selects everything and handles it, THIS INCLUDES CHECKING peer_interested AND SEEDING, FINALLY.
-
-* Descriptions of algorithms in the paper [Rarest First and Choke Algorithms Are Enough - Section 2.2](http://conferences.sigcomm.org/imc/2006/papers/p20-legout.pdf)
-* Track and download individual blocks instead of pieces
-  * We have a peer worker where we spawn block download tasks. Each task has a broadcast receiver of messages received from the peer and a transmitter of blocks received.
-
-### Current state
 * Update `piece.availability` when bitfield/have is received
-* Enable endgame when all pieces are downloading
+* Proper fix for endgame
+  * The principle is: when all blocks are downloading the remaining peers may download already downloading blocks
 * Find a way to receive when a block has been cancelled
   * I think passing a broadcast to all `get_block` instances is the best way to do this
-* **Find a way to manage the peer threads in Session**
-  * Need to join the workers in the event loop
 
-### Errors
+### Problems
 * Fix this warning
   * `WARN [bittorrent::core::session] download for piece 1291 block 15 not found, block downloaded in vain`
+  * Maybe this occurrs if two peers are downloading the same block and one of them sets the block to pending, or something? Probably scratch that but..
 * Fix sometimes getting stuck near end
   * `INFO [bittorrent_cli]    0 PENDING   3 DOWNLOADING   0 VERIFYING  1330 DONE   0 OTHER`

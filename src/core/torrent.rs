@@ -9,7 +9,9 @@ use std::{
 	}
 };
 
+use thiserror::Error;
 use tokio::sync::Mutex;
+use tokio_util::task::JoinMap;
 
 use crate::{
 	core::{
@@ -22,9 +24,11 @@ use crate::{
 		},
 		piece_download::PieceDownload,
 		session::{
+			EventSender,
 			PeerPtr,
 			PieceId,
-			TorrentId
+			TorrentId,
+			TorrentPtr
 		},
 		util,
 		worker
@@ -40,15 +44,33 @@ use crate::{
 	}
 };
 
+#[derive(Error, Debug)]
+pub enum ResumeError {
+	#[error("An error occurred while reading or writing data")]
+	IOError(#[from] std::io::Error),
+	#[error("An error occurred while serializing or deserializing data")]
+	BincodeError(#[from] bincode::Error),
+	#[error("The checksum of the provided store does not match the deserialized store")]
+	InvalidChecksum,
+	#[error(transparent)]
+	Other(#[from] Box<dyn std::error::Error>)
+}
+
 #[derive(Debug)]
 pub struct WorkerHandle {
 	pub peer: PeerPtr,
-	pub mode_tx: tokio::sync::watch::Sender<worker::Mode>,
-	pub task: tokio::task::JoinHandle<worker::Result<()>>
+	pub mode_tx: tokio::sync::watch::Sender<worker::Mode>
 }
 
 /// Atomic counter used to generate torrent identifiers
 static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+pub struct ResumeData<'a> {
+	pub(crate) meta_info: &'a MetaInfo,
+	pub(crate) pieces: &'a Vec<bool>,
+	pub(crate) checksum: u64
+}
 
 #[derive(Debug)]
 pub struct Torrent {
@@ -56,16 +78,18 @@ pub struct Torrent {
 	id: TorrentId,
 	/// Meta info of the torrent
 	pub meta_info: MetaInfo,
-	/// List of all workers
-	pub peers: Vec<WorkerHandle>,
+	/// Map of a worker's id to handle
+	pub peers: HashMap<u32, WorkerHandle>,
+	/// JoinMap of a worker's id to the result of the process
+	workers: JoinMap<u32, worker::Result<()>>,
 	/// Store of the torrent
 	pub store: Arc<Mutex<Box<dyn Store>>>,
 	/// List of all pieces
 	pub pieces: Vec<Piece>,
 	/// Piece picker
 	pub picker: Picker,
-	/// Ongoing piece downloads
-	pub downloads: HashMap<u32, Arc<Mutex<PieceDownload>>>,
+	/// Map of piece id to download
+	pub downloads: HashMap<PieceId, Arc<Mutex<PieceDownload>>>,
 	// TODO: Implement multiple trackers
 	pub tracker: Tracker
 }
@@ -84,7 +108,8 @@ impl Torrent {
 		Torrent {
 			id,
 			meta_info,
-			peers: Vec::new(),
+			peers: HashMap::new(),
+			workers: JoinMap::new(),
 			pieces,
 			picker: Picker { end_game: false },
 			store: Arc::new(Mutex::new(Box::new(store))),
@@ -140,6 +165,69 @@ impl Torrent {
 		self.pieces.iter().all(|piece| piece.state == State::Done)
 	}
 
+	#[cfg(feature = "resume")]
+	pub fn serialize_into(&self, mut writer: impl std::io::Write) -> Result<(), ResumeError> {
+		use crate::core::piece;
+
+		let checksum = self.store.blocking_lock().checksum().map_err(|_| {
+			bincode::Error::new(bincode::ErrorKind::Custom(
+				"Failed to calculate checksum of store".to_string()
+			))
+		})?;
+
+		let pieces = self
+			.pieces
+			.iter()
+			.map(|piece| piece.state == piece::State::Done)
+			.collect::<Vec<_>>();
+
+		bincode::serialize_into(&mut writer, &self.meta_info)?;
+		bincode::serialize_into(&mut writer, &pieces)?;
+		bincode::serialize_into(&mut writer, &checksum)?;
+
+		Ok(())
+	}
+
+	/// Deserialize a torrent from a reader
+	///
+	/// The callback `load_store` should load the store the provided [`MetaInfo`] corresponds to with the requested pieces
+	#[cfg(feature = "resume")]
+	pub fn deserialize_from<F, S>(
+		mut reader: impl std::io::Read,
+		load_store: F
+	) -> Result<Self, ResumeError>
+	where
+		F: FnOnce(ResumeData) -> S,
+		S: Store + 'static
+	{
+		use crate::core::piece;
+
+		let meta_info: MetaInfo = bincode::deserialize_from(&mut reader)?;
+		let pieces: Vec<bool> = bincode::deserialize_from(&mut reader)?;
+		let checksum: u64 = bincode::deserialize_from(&mut reader)?;
+
+		let store = load_store(ResumeData {
+			meta_info: &meta_info,
+			pieces: &pieces,
+			checksum
+		});
+
+		let mut torrent = Torrent::new(meta_info, store);
+		torrent.pieces = pieces
+			.iter()
+			.map(|val| Piece {
+				state: if *val {
+					piece::State::Done
+				} else {
+					piece::State::Pending
+				},
+				..Piece::default()
+			})
+			.collect::<Vec<Piece>>();
+
+		Ok(torrent)
+	}
+
 	/// Announces a torrent
 	pub(crate) async fn try_announce(&mut self, config: &Configuration) -> Option<Response> {
 		let mut i = 0;
@@ -173,10 +261,39 @@ impl Torrent {
 		}
 	}
 
+	pub(crate) fn spawn_worker(
+		&mut self,
+		config: Arc<Configuration>,
+		torrent: TorrentPtr,
+		peer: PeerPtr,
+		event_tx: EventSender
+	) -> u32 {
+		let id = WORKER_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+		let (mode_tx, mode_rx) = tokio::sync::watch::channel(worker::Mode {
+			download: true,
+			seed: false
+		});
+
+		self.workers.spawn(
+			id,
+			worker::run(config, torrent, peer.clone(), event_tx, mode_rx)
+		);
+
+		self.peers.insert(id, WorkerHandle { mode_tx, peer });
+
+		id
+	}
+
 	pub(crate) async fn shutdown(&mut self) {
-		for peer in self.peers.drain(..) {
-			drop(peer.mode_tx);
-			peer.task.await.unwrap().unwrap();
+		log::debug!("Shutting down peers");
+
+		self.peers.clear();
+
+		while let Some((id, result)) = self.workers.join_next().await {
+			if let Err(error) = result.unwrap() {
+				log::error!("[Worker {id}] An error occurred while shutting down: {error}");
+			}
 		}
 	}
 }

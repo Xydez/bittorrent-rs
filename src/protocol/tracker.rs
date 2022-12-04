@@ -41,7 +41,7 @@ use std::{
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum TrackerError {
+pub enum Error {
 	#[error("Failed to send request")]
 	RequestError(#[from] reqwest::Error),
 	#[error("Received an invalid response from the tracker")]
@@ -52,7 +52,7 @@ pub enum TrackerError {
 	TrackerError(String)
 }
 
-pub(crate) type Result<T> = std::result::Result<T, TrackerError>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Event {
@@ -158,16 +158,16 @@ impl Tracker {
 		let response_raw = serde_bencode::from_bytes::<raw::Response>(&response_bytes)?;
 
 		let response = match response_raw.failure_reason {
-			Some(reason) => Err(TrackerError::TrackerError(reason)),
+			Some(reason) => Err(Error::TrackerError(reason)),
 			None => Ok(Response {
-				interval: response_raw.interval.ok_or(TrackerError::InvalidResponse)?,
+				interval: response_raw.interval.ok_or(Error::InvalidResponse)?,
 				peers_addrs: response_raw
 					.peers
-					.ok_or(TrackerError::InvalidResponse)?
+					.ok_or(Error::InvalidResponse)?
 					.chunks_exact(6)
 					.map(|chunk| {
 						<[u8; 6]>::try_from(chunk)
-							.map_err(|_| TrackerError::InvalidResponse)
+							.map_err(|_| Error::InvalidResponse)
 							.map(|chunk| {
 								SocketAddrV4::new(
 									Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]),

@@ -18,7 +18,7 @@ pub fn hex(bytes: &[u8]) -> String {
 	let mut out = String::with_capacity(bytes.len() * 3 - 1);
 
 	for b in bytes {
-		out.push_str(&format!("{:02x}", b));
+		out.push_str(&format!("{b:02x}"));
 	}
 
 	out
@@ -65,11 +65,11 @@ where
 
 /// Formats a string of an error and all errors that caused it
 pub fn error_chain<E: std::error::Error>(error: E) -> String {
-	let mut string = format!("{}", error);
+	let mut string = error.to_string();
 
 	let mut current = error.source();
 	while let Some(cause) = current {
-		string.push_str(&format!("\nCaused by:\n\t{}", cause));
+		string.push_str(&format!("\nCaused by:\n\t{cause}"));
 		current = cause.source();
 	}
 
@@ -100,7 +100,7 @@ pub fn set_bit(bytes: &mut [u8], i: usize, value: bool) {
 
 /// Stanardized formatting to describe a block within a piece
 pub fn fmt_block(piece: crate::core::session::PieceId, block: usize) -> String {
-	format!("{}:{}", piece, block)
+	format!("{piece}:{block}")
 }
 
 /// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match

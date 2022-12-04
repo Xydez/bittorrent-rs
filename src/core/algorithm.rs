@@ -106,7 +106,10 @@ impl Picker {
 			.enumerate()
 			.find(|(_, block)| block.state == block::State::Pending)
 			.or_else(|| {
-				if self.end_game {
+				if
+				/*self.end_game*/
+				false {
+					// TODO: Get end_game to work correctly
 					// TODO: We need to make sure we aren't already requesting the block from the peer
 					download
 						.blocks

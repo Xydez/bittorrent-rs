@@ -56,7 +56,7 @@ pub enum PieceEvent {
 impl std::fmt::Display for PieceEvent {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			PieceEvent::Block(block) => write!(f, "Block({})", block),
+			PieceEvent::Block(block) => write!(f, "Block({block})"),
 			PieceEvent::Downloaded(data) => write!(f, "Downloaded({} bytes)", data.len()),
 			PieceEvent::Verified(data) => write!(f, "Verified({} bytes)", data.len()),
 			PieceEvent::Done => write!(f, "Done")
@@ -72,7 +72,7 @@ impl std::fmt::Display for TorrentEvent {
 			TorrentEvent::Announced(response) => {
 				write!(f, "Announced({} peers)", response.peers_addrs.len())
 			}
-			TorrentEvent::PieceEvent(piece, event) => write!(f, "PieceEvent({}, {})", piece, event)
+			TorrentEvent::PieceEvent(piece, event) => write!(f, "PieceEvent({piece}, {event})")
 		}
 	}
 }
@@ -83,7 +83,7 @@ impl std::fmt::Display for Event {
 			Event::Started => write!(f, "Started"),
 			Event::Stopped => write!(f, "Stopped"),
 			Event::TorrentEvent(torrent, event) => {
-				write!(f, "TorrentEvent({}, {})", torrent, event)
+				write!(f, "TorrentEvent({torrent}, {event})")
 			}
 		}
 	}

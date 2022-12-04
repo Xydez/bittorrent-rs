@@ -14,14 +14,9 @@ use crate::{
 		peer::Peer,
 		piece,
 		session::Session,
-		torrent::WorkerHandle,
-		util,
-		worker::{
-			self,
-			Mode
-		}
+		util
 	},
-	protocol::wire::{
+	protocol::wire::connection::{
 		Handshake,
 		Wire
 	}
@@ -137,26 +132,11 @@ impl Session {
 							};
 
 							let peer = Arc::new(Mutex::new(peer));
-							let (mode_tx, mode_rx) = tokio::sync::watch::channel(Mode {
-								download: true,
-								seed: false
-							});
 
-							let mut lock = torrent.write().await;
-
-							let task = tokio::spawn(worker::run(
-								config,
-								torrent.clone(),
-								peer.clone(),
-								tx,
-								mode_rx
-							));
-
-							lock.peers.push(WorkerHandle {
-								mode_tx,
-								peer,
-								task
-							});
+							torrent
+								.write()
+								.await
+								.spawn_worker(config, torrent.clone(), peer, tx);
 						});
 					}
 				}

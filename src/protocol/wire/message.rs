@@ -3,14 +3,14 @@ use thiserror::Error;
 use crate::core::bitfield::Bitfield;
 
 #[derive(Error, Debug)]
-pub enum MessageError {
+pub enum Error {
 	#[error("Message ids must be between 0-8 (Got {0})")]
 	InvalidID(u8),
 	#[error("Invalid payload length")]
 	InvalidPayload
 }
 
-pub(crate) type Result<T> = std::result::Result<T, MessageError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -74,7 +74,7 @@ impl Message {
 }
 
 impl TryFrom<&[u8]> for Message {
-	type Error = MessageError;
+	type Error = Error;
 
 	fn try_from(buffer: &[u8]) -> Result<Self> {
 		// Messages of length zero are keepalives, and ignored. Keepalives are generally sent once every two minutes, but note that timeouts can be done much more quickly when data is expected.
@@ -97,13 +97,11 @@ impl TryFrom<&[u8]> for Message {
 						_ => unreachable!()
 					}
 				} else {
-					Err(MessageError::InvalidPayload)
+					Err(Error::InvalidPayload)
 				}
 			}
 			4 => Ok(Message::Have(u32::from_be_bytes(
-				payload
-					.try_into()
-					.map_err(|_| MessageError::InvalidPayload)?
+				payload.try_into().map_err(|_| Error::InvalidPayload)?
 			))),
 			5 => Ok(Message::Bitfield(Bitfield::from_bytes(payload))),
 			6 => {
@@ -114,7 +112,7 @@ impl TryFrom<&[u8]> for Message {
 						u32::from_be_bytes(payload[8..12].try_into().unwrap())
 					))
 				} else {
-					Err(MessageError::InvalidPayload)
+					Err(Error::InvalidPayload)
 				}
 			}
 			7 => {
@@ -125,7 +123,7 @@ impl TryFrom<&[u8]> for Message {
 						payload[8..].to_vec()
 					))
 				} else {
-					Err(MessageError::InvalidPayload)
+					Err(Error::InvalidPayload)
 				}
 			}
 			8 => {
@@ -136,10 +134,10 @@ impl TryFrom<&[u8]> for Message {
 						u32::from_be_bytes(payload[8..12].try_into().unwrap())
 					))
 				} else {
-					Err(MessageError::InvalidPayload)
+					Err(Error::InvalidPayload)
 				}
 			}
-			id => Err(MessageError::InvalidID(id))
+			id => Err(Error::InvalidID(id))
 		}
 	}
 }
@@ -189,16 +187,16 @@ impl std::fmt::Display for Message {
 			Message::Unchoke => write!(f, "KeepAlive"),
 			Message::Interested => write!(f, "KeepAlive"),
 			Message::NotInterested => write!(f, "KeepAlive"),
-			Message::Have(i) => write!(f, "Have({})", i),
+			Message::Have(i) => write!(f, "Have({i})"),
 			Message::Bitfield(bitfield) => write!(f, "Bitfield(<{} elements>)", bitfield.len()),
 			Message::Request(index, begin, length) => {
-				write!(f, "Request({}, {}, {})", index, begin, length)
+				write!(f, "Request({index}, {begin}, {length})")
 			}
 			Message::Piece(index, begin, piece) => {
-				write!(f, "Piece({}, {}, <{} elements>)", index, begin, piece.len())
+				write!(f, "Piece({index}, {begin}, <{} elements>)", piece.len())
 			}
 			Message::Cancel(index, begin, length) => {
-				write!(f, "Cancel({}, {}, {})", index, begin, length)
+				write!(f, "Cancel({index}, {begin}, {length})")
 			}
 		}
 	}

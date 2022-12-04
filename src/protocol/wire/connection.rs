@@ -19,24 +19,24 @@ use tokio::{
 use crate::protocol::{
 	extensions::Extensions,
 	wire::message::{
-		Message,
-		MessageError
+		self,
+		Message
 	}
 };
 
 const PROTOCOL: &[u8] = b"BitTorrent protocol";
 
 #[derive(Error, Debug)]
-pub enum WireError {
+pub enum Error {
 	#[error("A TCP/IP error occurred")]
 	Network(#[from] std::io::Error),
 	#[error("An invalid handshake was received")]
 	InvalidHandshake,
 	#[error("An invalid message was received")]
-	InvalidMessage(#[from] MessageError)
+	InvalidMessage(#[from] message::Error)
 }
 
-pub(crate) type Result<T> = std::result::Result<T, WireError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct Handshake {
@@ -102,7 +102,7 @@ impl Wire {
 			if self.stream.read_buf(&mut self.buffer).await? == 0 {
 				// If read_buf returns zero it means the remote has closed the connection
 
-				return Err(WireError::Network(std::io::Error::from(
+				return Err(Error::Network(std::io::Error::from(
 					if self.buffer.is_empty() {
 						std::io::ErrorKind::ConnectionReset
 					} else {
@@ -122,7 +122,7 @@ impl Wire {
 		let peer_handshake = self.receive_handshake().await?;
 
 		if handshake.info_hash != peer_handshake.info_hash {
-			Err(WireError::InvalidHandshake)
+			Err(Error::InvalidHandshake)
 		} else {
 			Ok(peer_handshake)
 		}
@@ -144,7 +144,7 @@ impl Wire {
 		self.stream.read_exact(protocol.as_mut_slice()).await?;
 
 		if protocol != PROTOCOL {
-			return Err(WireError::InvalidHandshake);
+			return Err(Error::InvalidHandshake);
 		}
 
 		let mut extensions = [0u8; 8];
