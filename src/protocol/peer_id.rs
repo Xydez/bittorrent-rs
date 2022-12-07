@@ -298,6 +298,7 @@ struct Client {
 mod tests {
 	use super::*;
 	use crate::core::util;
+	use pretty_assertions::assert_eq;
 
 	#[test]
 	fn test_azureus() {

@@ -279,6 +279,7 @@ impl Store for FileStore {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use pretty_assertions::assert_eq;
 
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]

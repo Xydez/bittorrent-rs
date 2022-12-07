@@ -8,7 +8,7 @@ bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as d
 4. Add the meta info and store to the session with [`Session::add`](core::session::Session::add)
 5. Start the session with [`Session::start`](core::session::Session::start)
 
-## Example
+### Example
 ```rust,no_run
 use bittorrent::prelude::*;
 
@@ -34,14 +34,15 @@ async fn main() {
 }
 ```
 
-## Terminology
+## Information
+### Terminology
 * *peer* - BitTorrent instance that downloads and seeds torrents
 * *client* - The locally running BitTorrent instance. The *client* is by definiton also a *peer*.
 * *torrent* - Complete file or files as described in a metainfo file
 * *piece* - Part of a torrent that is described in the metainfo file and can be verified by a SHA1 hash
 * *block* - Segment of a piece that a *client* may request from a *peer*
 
-## Reading material
+### Reading material
 * [Inofficial BitTorrent specification](https://wiki.theory.org/BitTorrentSpecification)
 * https://blog.jse.li/posts/torrent/
 * https://en.wikipedia.org/wiki/Torrent_file
@@ -56,7 +57,7 @@ async fn main() {
 * https://www.bittorrent.org/beps/bep_0010.html
 * Descriptions of algorithms in the paper [Rarest First and Choke Algorithms Are Enough - Section 2.2](http://conferences.sigcomm.org/imc/2006/papers/p20-legout.pdf)
 
-## Coding guidelines
+### Coding guidelines
 * `use super::..` is forbidden outside test modules
 * All code must be formatted with `rustfmt`
 * Follow the guidelines for log levels
@@ -74,35 +75,29 @@ async fn main() {
 * Investigate [tracing](https://lib.rs/crates/tracing) for better logging
 
 ### Optimization
-* Unix: Use `pwritev` in the [*nix](https://lib.rs/crates/nix) crate
-  * The difference between `write` and `writev` is that `writev` writes multiple buffers into one contiguous slice in the file, which removes the need to copy to a new buffer before writing
-  * The difference between `write` and `pwrite` is that `pwrite` specifies the offset, which means `seek` does not need to be called, halving the amount of system calls
-* Windows: Use [`WriteFile`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile)
-  * See the [`lpOverlapped`](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-overlapped) parameter
+* Platform optimized io
+  * Unix: Use `pwritev` in the [*nix](https://lib.rs/crates/nix) crate
+    * The difference between `write` and `writev` is that `writev` writes multiple buffers into one contiguous slice in the file, which removes the need to copy to a new buffer before writing
+    * The difference between `write` and `pwrite` is that `pwrite` specifies the offset, which means `seek` does not need to be called, halving the amount of system calls
+  * Windows: Use [`WriteFile`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile)
+    * See the [`lpOverlapped`](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-overlapped) parameter
 * Maybe use [dashmap](https://lib.rs/crates/dashmap) for better performance
+* Maybe use [hashbrown](https://lib.rs/crates/hashbrown) for better performance
 * Check if we should `Weak` instead of `Arc` for some things that should not be kept alive
+* Look for ways to optimize away some mutexes/rwlocks
+* Use `Bytes` where applicable
 
 ### Features
-* ~~Write and use [peer_id](src/protocol/peer_id.rs)~~
-* ~~Resuming downloads~~
-  * ~~Keep resume data in a file beside the torrent (<torrent_name>.resume)~~
-* Generic `StoreWriter` to write to the store more efficiently (buffered writes / write_vectored?)
 * Magnet links
 * Allow requesting specific byte ranges from the torrent, and the client will prioritize those pieces
-* Allow setting modes
+* Allow setting torrent modes
 * Document all the code (`#![warn(missing_docs)]`)
   * Follow the [documentation guidelines](https://rust-lang.github.io/api-guidelines/documentation.html)
 
 ### Changes
-* Create a `verification_worker.rs` that handles verifying pieces
 * Standardize more of the code
   * Piece ID and piece size
   * Change all incorrect instances of *length* into *size*
-* Look for ways to optimize away some mutexes/rwlocks
-* Find a nicer way to handle bytes, such as a trait to convert to/from bytes, as well as using `Bytes` instead of `Vec<u8>`?
-  * The current way works just fine, though?
-* Use [tokio::task::JoinSet](https://docs.rs/tokio/latest/tokio/task/struct.JoinSet.html) in Session to track the peer tasks
-* It doesn't make sense for the `Worker` struct to be defined in `worker.rs` but used only in `session.rs`
 * It might be a good idea to let multiple peers work on the same piece normally
   * We could change the PieceIterator to no longer have a "current download" and just check the ongoing `torrent.downloads` before calling the picker.
   * This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways
