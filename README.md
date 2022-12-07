@@ -77,6 +77,8 @@ async fn main() {
 * Unix: Use `pwritev` in the [*nix](https://lib.rs/crates/nix) crate
   * The difference between `write` and `writev` is that `writev` writes multiple buffers into one contiguous slice in the file, which removes the need to copy to a new buffer before writing
   * The difference between `write` and `pwrite` is that `pwrite` specifies the offset, which means `seek` does not need to be called, halving the amount of system calls
+* Windows: Use [`WriteFile`](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile)
+  * See the [`lpOverlapped`](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-overlapped) parameter
 * Maybe use [dashmap](https://lib.rs/crates/dashmap) for better performance
 * Check if we should `Weak` instead of `Arc` for some things that should not be kept alive
 

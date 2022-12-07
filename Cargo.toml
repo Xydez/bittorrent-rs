@@ -1,5 +1,7 @@
 [workspace]
-members = ["bittorrent-cli"] # "bittorrent-webui"
+members = [
+	"bittorrent-cli"
+]
 
 [workspace.package]
 edition = "2021"
