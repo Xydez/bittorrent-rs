@@ -144,69 +144,6 @@ impl Torrent {
 		self.pieces.iter().all(|piece| piece.state == State::Done)
 	}
 
-	#[cfg(feature = "resume")]
-	pub fn serialize_into(&self, mut writer: impl std::io::Write) -> Result<(), ResumeError> {
-		use crate::core::piece;
-
-		let checksum = self.store.blocking_lock().checksum().map_err(|_| {
-			bincode::Error::new(bincode::ErrorKind::Custom(
-				"Failed to calculate checksum of store".to_string()
-			))
-		})?;
-
-		let pieces = self
-			.pieces
-			.iter()
-			.map(|piece| piece.state == piece::State::Done)
-			.collect::<Vec<_>>();
-
-		bincode::serialize_into(&mut writer, &self.meta_info)?;
-		bincode::serialize_into(&mut writer, &pieces)?;
-		bincode::serialize_into(&mut writer, &checksum)?;
-
-		Ok(())
-	}
-
-	/// Deserialize a torrent from a reader
-	///
-	/// The callback `load_store` should load the store the provided [`MetaInfo`] corresponds to with the requested pieces
-	#[cfg(feature = "resume")]
-	pub fn deserialize_from<F, S>(
-		mut reader: impl std::io::Read,
-		load_store: F
-	) -> Result<Self, ResumeError>
-	where
-		F: FnOnce(ResumeData) -> S,
-		S: Store + 'static
-	{
-		use crate::core::piece;
-
-		let meta_info: MetaInfo = bincode::deserialize_from(&mut reader)?;
-		let pieces: Vec<bool> = bincode::deserialize_from(&mut reader)?;
-		let checksum: u64 = bincode::deserialize_from(&mut reader)?;
-
-		let store = load_store(ResumeData {
-			meta_info: &meta_info,
-			pieces: &pieces,
-			checksum
-		});
-
-		let mut torrent = Torrent::new(meta_info, store);
-		torrent.pieces = pieces
-			.iter()
-			.map(|val| Piece {
-				state: if *val {
-					piece::State::Done
-				} else {
-					piece::State::Pending
-				},
-				..Piece::default()
-			})
-			.collect::<Vec<Piece>>();
-
-		Ok(torrent)
-	}
-
 	/// Announces a torrent
 	pub(crate) async fn try_announce(&mut self, config: &Configuration) -> Option<Response> {
 		let mut i = 0;
@@ -274,6 +211,66 @@ impl Torrent {
 				log::error!("[Worker {id}] An error occurred while shutting down: {error}");
 			}
 		}
+	}
+}
+
+#[cfg(feature = "resume")]
+impl Torrent {
+	pub fn serialize_into(&self, mut writer: impl std::io::Write) -> Result<(), ResumeError> {
+		let checksum = self.store.blocking_lock().checksum().map_err(|_| {
+			bincode::Error::new(bincode::ErrorKind::Custom(
+				"Failed to calculate checksum of store".to_string()
+			))
+		})?;
+
+		let pieces = self
+			.pieces
+			.iter()
+			.map(|piece| piece.state == piece::State::Done)
+			.collect::<Vec<_>>();
+
+		bincode::serialize_into(&mut writer, &self.meta_info)?;
+		bincode::serialize_into(&mut writer, &pieces)?;
+		bincode::serialize_into(&mut writer, &checksum)?;
+
+		Ok(())
+	}
+
+	/// Deserialize a torrent from a reader
+	///
+	/// The callback `load_store` should load the store the provided [`MetaInfo`] corresponds to with the requested pieces
+	pub fn deserialize_from<F, S>(
+		mut reader: impl std::io::Read,
+		load_store: F
+	) -> Result<Self, ResumeError>
+	where
+		F: FnOnce(ResumeData) -> S,
+		S: Store + 'static
+	{
+		let meta_info: MetaInfo = bincode::deserialize_from(&mut reader)?;
+		let pieces: Vec<bool> = bincode::deserialize_from(&mut reader)?;
+		let checksum: u64 = bincode::deserialize_from(&mut reader)?;
+
+		let store = load_store(ResumeData {
+			meta_info: &meta_info,
+			pieces: &pieces,
+			checksum
+		});
+
+		let mut torrent = Torrent::new(meta_info, store);
+		torrent.pieces = pieces
+			.iter()
+			.map(|val| Piece {
+				state: if *val {
+					piece::State::Done
+				} else {
+					piece::State::Pending
+				},
+				..Piece::default()
+			})
+			.collect::<Vec<Piece>>();
+
+		Ok(torrent)
 	}
 }
 
