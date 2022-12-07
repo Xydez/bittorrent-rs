@@ -1,9 +1,10 @@
 [package]
 name = "bittorrent-cli"
-description = "command-line interface for bittorrent"
-version = { workspace = true }
+version = "0.1.0"
+description = "command-line interface for bittorrent-rs"
 edition = { workspace = true }
 authors = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
 argh = "0.1.9"

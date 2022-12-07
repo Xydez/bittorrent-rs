@@ -2,9 +2,9 @@
 members = ["bittorrent-cli"] # "bittorrent-webui"
 
 [workspace.package]
-version = "0.1.0"
 edition = "2021"
 authors = ["Johannes <thexydez@gmail.com>"]
+license = "Unlicense"
 
 [workspace.dependencies]
 log = "0.4"
@@ -12,10 +12,14 @@ tokio = "1.22"
 
 [package]
 name = "bittorrent"
+version = "0.1.0"
 description = "lightweight implementation of the bittorrent v1 protocol"
-version = { workspace = true }
+repository = "https://github.com/Xydez/bittorrent-rs"
+keywords = ["bittorrent", "torrent", "p2p", "networking"]
+categories = ["network-programming"]
 edition = { workspace = true }
 authors = { workspace = true }
+license = { workspace = true }
 
 [features]
 default = ["resume"]
