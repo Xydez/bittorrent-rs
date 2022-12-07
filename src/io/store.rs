@@ -283,8 +283,7 @@ mod tests {
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn single_file() {
-		let mut store =
-			FileStore::new(".", 7, vec![(21, "test_single_file.txt".into())]).unwrap();
+		let mut store = FileStore::new(".", 7, vec![(21, "test_single_file.txt".into())]).unwrap();
 
 		for i in 0..3 {
 			store.set(i, b"testing").unwrap();
@@ -300,12 +299,8 @@ mod tests {
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn single_file_last_piece() {
-		let mut store = FileStore::new(
-			".",
-			7,
-			vec![(18, "test_single_file_last_piece.txt".into())]
-		)
-		.unwrap();
+		let mut store =
+			FileStore::new(".", 7, vec![(18, "test_single_file_last_piece.txt".into())]).unwrap();
 
 		for i in 0..2 {
 			store.set(i, b"testing").unwrap();

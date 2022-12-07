@@ -1,5 +1,4 @@
 #![doc = include_str!("../README.md")]
-
 #![feature(trait_alias)]
 #![feature(duration_consts_float)]
 #![feature(int_roundings)]
