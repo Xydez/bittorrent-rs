@@ -2,7 +2,7 @@
 
 use thiserror::Error;
 
-use crate::{core::session::PieceId, protocol::wire::message::Message};
+use crate::{core::piece::PieceId, protocol::wire::message::Message};
 
 #[derive(Error, Debug)]
 pub enum Error {

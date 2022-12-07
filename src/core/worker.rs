@@ -10,9 +10,9 @@ use crate::{
 		configuration::Configuration,
 		event::{Event, PieceEvent, TorrentEvent},
 		peer::{Peer, PeerError},
-		piece,
+		piece::{self, PieceId},
 		piece_download::PieceDownload,
-		session::{EventSender, PeerPtr, PieceId, TorrentPtr},
+		session::{EventSender, PeerPtr, TorrentPtr},
 		torrent::Torrent,
 		util
 	},

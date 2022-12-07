@@ -99,7 +99,7 @@ pub fn set_bit(bytes: &mut [u8], i: usize, value: bool) {
 }
 
 /// Stanardized formatting to describe a block within a piece
-pub fn fmt_block(piece: crate::core::session::PieceId, block: usize) -> String {
+pub fn fmt_block(piece: crate::core::piece::PieceId, block: usize) -> String {
 	format!("{piece}:{block}")
 }
 
@@ -115,7 +115,7 @@ pub async fn async_verify(piece: std::sync::Arc<Vec<u8>>, hash: &[u8; 20]) -> bo
 
 /// Calculates the size of a piece using the [`MetaInfo`]
 pub fn piece_size(
-	piece: crate::core::session::PieceId,
+	piece: crate::core::piece::PieceId,
 	meta_info: &crate::protocol::metainfo::MetaInfo
 ) -> usize {
 	if piece as usize == meta_info.pieces.len() - 1 {

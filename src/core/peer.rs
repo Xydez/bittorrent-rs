@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-	core::{bitfield::Bitfield, session::PieceId, util},
+	core::{bitfield::Bitfield, piece::PieceId, util},
 	protocol::{
 		extensions::Extensions,
 		peer_id::PeerId,

@@ -8,7 +8,11 @@ use rand::seq::{IteratorRandom, SliceRandom};
 use tap::Tap;
 
 use crate::core::{
-	block, peer::Peer, piece, piece_download::PieceDownload, session::PieceId, torrent::Torrent
+	block,
+	peer::Peer,
+	piece::{self, PieceId},
+	piece_download::PieceDownload,
+	torrent::Torrent
 };
 
 #[derive(Debug)]

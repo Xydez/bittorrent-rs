@@ -7,7 +7,7 @@ use crate::core::{
 	event::{Event, TorrentEvent},
 	peer::Peer,
 	piece_download::PieceDownload,
-	torrent::Torrent
+	torrent::{Torrent, TorrentId}
 };
 
 /* Type definitions */
@@ -24,8 +24,7 @@ pub type EventSender = tokio::sync::mpsc::UnboundedSender<Event>;
 pub type EventReceiver = tokio::sync::mpsc::UnboundedReceiver<Event>;
 type CommandSender = tokio::sync::mpsc::UnboundedSender<Command>;
 type CommandReceiver = tokio::sync::mpsc::UnboundedReceiver<Command>;
-pub type PieceId = u32; // TODO: Newtype
-pub type TorrentId = u32; // TODO: Newtype
+
 pub type TorrentPtr = Arc<RwLock<Torrent>>;
 pub type PeerPtr = Arc<Mutex<Peer>>;
 pub type PieceDownloadPtr = Arc<Mutex<PieceDownload>>;
@@ -88,7 +87,7 @@ impl Drop for SessionHandle {
 }
 
 pub struct Session {
-	torrents: HashMap<u32, TorrentPtr>,
+	torrents: HashMap<TorrentId, TorrentPtr>,
 	config: Arc<Configuration>,
 	//listeners: Vec<Box<dyn EventCallback + 'static>>,
 	/// Transmits events to the event loop

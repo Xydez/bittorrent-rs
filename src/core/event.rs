@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::{
-	core::session::{PieceId, TorrentId},
+	core::{piece::PieceId, torrent::TorrentId},
 	protocol::tracker
 };
 

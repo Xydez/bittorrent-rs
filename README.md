@@ -18,6 +18,7 @@ async fn main() {
     let meta_info = MetaInfo::load("sample.torrent").unwrap();
 
     let store = FileStore::new(
+        "downloads",
         meta_info.piece_size,
         meta_info.files
             .iter()

@@ -82,8 +82,8 @@ impl FileStore {
 	///
 	/// The total length is calculated from the sum of the file sizes
 	pub fn new(
-		piece_length: usize,
 		directory: impl AsRef<Path>,
+		piece_length: usize,
 		files: impl IntoIterator<Item = (usize, PathBuf)>
 	) -> std::io::Result<FileStore> {
 		let files = files
@@ -127,8 +127,8 @@ impl FileStore {
 		meta_info: &MetaInfo
 	) -> std::io::Result<FileStore> {
 		FileStore::new(
-			meta_info.piece_size,
 			directory,
+			meta_info.piece_size,
 			meta_info
 				.files
 				.iter()
@@ -284,7 +284,7 @@ mod tests {
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn single_file() {
 		let mut store =
-			FileStore::new(7, ".test_dir", vec![(21, "test_single_file.txt".into())]).unwrap();
+			FileStore::new(".", 7, vec![(21, "test_single_file.txt".into())]).unwrap();
 
 		for i in 0..3 {
 			store.set(i, b"testing").unwrap();
@@ -301,8 +301,8 @@ mod tests {
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn single_file_last_piece() {
 		let mut store = FileStore::new(
+			".",
 			7,
-			".test_dir",
 			vec![(18, "test_single_file_last_piece.txt".into())]
 		)
 		.unwrap();
@@ -326,8 +326,8 @@ mod tests {
 	#[cfg_attr(not(feature = "io-tests"), ignore)]
 	fn multi_file() {
 		let mut store = FileStore::new(
+			".",
 			7,
-			".test_dir",
 			vec![
 				(10, "test_multi_file_a.txt".into()),
 				(8, "test_multi_file_b.txt".into()),

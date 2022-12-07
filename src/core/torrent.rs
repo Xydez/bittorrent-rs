@@ -11,9 +11,9 @@ use crate::{
 	core::{
 		algorithm::Picker,
 		configuration::Configuration,
-		piece::{Piece, Priority, State},
+		piece::{self, Piece, PieceId, Priority, State},
 		piece_download::PieceDownload,
-		session::{EventSender, PeerPtr, PieceId, TorrentId, TorrentPtr},
+		session::{EventSender, PeerPtr, TorrentPtr},
 		util, worker
 	},
 	io::store::Store,
@@ -41,14 +41,30 @@ pub struct WorkerHandle {
 	pub mode_tx: tokio::sync::watch::Sender<worker::Mode>
 }
 
-/// Atomic counter used to generate torrent identifiers
-static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 pub struct ResumeData<'a> {
 	pub(crate) meta_info: &'a MetaInfo,
 	pub(crate) pieces: &'a Vec<bool>,
 	pub(crate) checksum: u64
+}
+
+/// Atomic counter used to generate torrent identifiers
+static TORRENT_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub struct TorrentId(pub(crate) u32);
+
+impl TorrentId {
+	pub(crate) fn gen() -> Self {
+		TorrentId(TORRENT_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+	}
+}
+
+impl std::fmt::Display for TorrentId {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.0)
+	}
 }
 
 #[derive(Debug)]
@@ -75,7 +91,7 @@ pub struct Torrent {
 
 impl Torrent {
 	pub fn new(meta_info: MetaInfo, store: impl Store + 'static) -> Torrent {
-		let id = ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		let id = TorrentId::gen();
 		let mut pieces = Vec::new();
 
 		for _ in 0..meta_info.pieces.len() {
