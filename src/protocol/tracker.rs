@@ -93,7 +93,9 @@ pub struct Tracker {
 	/// URL to send the announce request to
 	announce_url: String,
 	/// Optional field containing the time and response of last announce that was sent to the tracker
-	last_announce: Option<(Instant, Response)>
+	last_announce: Option<(Instant, Response)>,
+	/// Optional tracker id received from the tracker
+	tracker_id: Option<String>
 }
 
 impl Tracker {
@@ -104,7 +106,8 @@ impl Tracker {
 		Tracker {
 			client: reqwest::Client::new(),
 			announce_url: announce.to_string(),
-			last_announce: None
+			last_announce: None,
+			tracker_id: None
 		}
 	}
 
@@ -118,6 +121,10 @@ impl Tracker {
 			("left", announce.left.to_string()),
 			("compact", "1".to_string()),
 		];
+
+		if let Some(tracker_id) = &self.tracker_id {
+			query.push(("trackerid", tracker_id.clone()));
+		}
 
 		if let Some(event) = &announce.event {
 			query.push((
@@ -153,6 +160,10 @@ impl Tracker {
 			.await?;
 
 		let response_raw = serde_bencode::from_bytes::<raw::Response>(&response_bytes)?;
+
+		if response_raw.tracker_id.is_some() {
+			self.tracker_id = response_raw.tracker_id;
+		}
 
 		let response = match response_raw.failure_reason {
 			Some(reason) => Err(Error::TrackerError(reason)),
@@ -208,7 +219,10 @@ mod raw {
 		/// Maps to the number of seconds the downloader should wait between regular rerequests
 		pub interval: Option<usize>,
 		/// List of dictionaries corresponding to peers
-		pub peers: Option<serde_bytes::ByteBuf>
+		pub peers: Option<serde_bytes::ByteBuf>,
+		/// A string that the client should send back on its next announcements. If absent and a previous announce sent a tracker id, do not discard the old value; keep using it.
+		#[serde(rename = "tracker id")]
+		pub tracker_id: Option<String>
 	}
 }
 
