@@ -125,10 +125,23 @@ pub fn piece_size(
 	}
 }
 
+pub fn block_size(
+	piece: crate::core::piece::PieceId,
+	block: crate::core::piece_download::BlockId,
+	meta_info: &crate::protocol::metainfo::MetaInfo,
+	config: &crate::core::configuration::Configuration
+) -> usize {
+	let piece_size = piece_size(piece, meta_info);
+	let bytes_to_end = piece_size - block * config.block_size;
+
+	config.block_size.min(bytes_to_end)
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use pretty_assertions::assert_eq;
+
+	use super::*;
 
 	#[test]
 	fn test_hex() {

@@ -39,6 +39,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
+	#[error("Invalid announce url")]
+	InvalidUrl,
 	#[error("Failed to send request")]
 	RequestError(#[from] reqwest::Error),
 	#[error("Received an invalid response from the tracker")]
@@ -149,6 +151,12 @@ impl Tracker {
 			percent_encoding::percent_encode(&announce.peer_id, percent_encoding::NON_ALPHANUMERIC)
 		);
 
+		let url = reqwest::Url::parse(&url).map_err(|_| Error::InvalidUrl)?;
+
+		if !matches!(url.scheme(), "http" | "https") {
+			return Err(Error::InvalidUrl);
+		}
+
 		let response_bytes = self
 			.client
 			.get(url)
@@ -159,7 +167,7 @@ impl Tracker {
 			.bytes()
 			.await?;
 
-		let response_raw = serde_bencode::from_bytes::<raw::Response>(&response_bytes)?;
+		let response_raw = serde_bencode::from_bytes::<raw::CompactResponse>(&response_bytes)?;
 
 		if response_raw.tracker_id.is_some() {
 			self.tracker_id = response_raw.tracker_id;
@@ -168,7 +176,12 @@ impl Tracker {
 		let response = match response_raw.failure_reason {
 			Some(reason) => Err(Error::TrackerError(reason)),
 			None => Ok(Response {
-				interval: response_raw.interval.ok_or(Error::InvalidResponse)?,
+				interval: std::time::Duration::from_secs(
+					response_raw.interval.ok_or(Error::InvalidResponse)? as u64
+				),
+				min_interval: response_raw
+					.min_interval
+					.map(|seconds| std::time::Duration::from_secs(seconds as u64)),
 				peers_addrs: response_raw
 					.peers
 					.ok_or(Error::InvalidResponse)?
@@ -198,12 +211,18 @@ impl Tracker {
 	pub fn announce_url(&self) -> &str {
 		&self.announce_url
 	}
+
+	pub fn last_announce(&self) -> &Option<(Instant, Response)> {
+		&self.last_announce
+	}
 }
 
 #[derive(Debug, Clone)]
 pub struct Response {
 	/// Interval in seconds the client SHOULD wait between sending event-less requests to the tracker
-	pub interval: usize,
+	pub interval: std::time::Duration,
+	/// Minimum interval in seconds the client MUST wait between sending event-less requests to the tracker
+	pub min_interval: Option<std::time::Duration>,
 	/// List of peers the client MAY connect to
 	pub peers_addrs: Vec<std::net::SocketAddrV4>
 }
@@ -211,13 +230,17 @@ pub struct Response {
 mod raw {
 	use serde::Deserialize;
 
+	/// Compact tracker response
 	#[derive(Debug, Deserialize)]
-	pub struct Response {
+	pub struct CompactResponse {
 		/// If a tracker response has a key failure reason, then that maps to a human readable string which explains why the query failed, and no other keys are required.
 		#[serde(rename = "failure reason")]
 		pub failure_reason: Option<String>,
-		/// Maps to the number of seconds the downloader should wait between regular rerequests
+		/// Interval in seconds the client SHOULD wait between sending event-less requests to the tracker
 		pub interval: Option<usize>,
+		/// Minimum interval in seconds the client MUST wait between sending event-less requests to the tracker
+		#[serde(rename = "min interval")]
+		pub min_interval: Option<usize>,
 		/// List of dictionaries corresponding to peers
 		pub peers: Option<serde_bytes::ByteBuf>,
 		/// A string that the client should send back on its next announcements. If absent and a previous announce sent a tracker id, do not discard the old value; keep using it.

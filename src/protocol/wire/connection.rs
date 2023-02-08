@@ -7,9 +7,12 @@ use tokio::{
 	net::TcpStream
 };
 
-use crate::protocol::{
-	extensions::Extensions,
-	wire::message::{self, Message}
+use crate::{
+	core::configuration::Configuration,
+	protocol::{
+		extensions::Extensions,
+		wire::message::{self, Message}
+	}
 };
 
 const PROTOCOL: &[u8] = b"BitTorrent protocol";
@@ -31,6 +34,16 @@ pub struct Handshake {
 	pub extensions: Extensions,
 	pub info_hash: [u8; 20],
 	pub peer_id: [u8; 20]
+}
+
+impl Handshake {
+	pub fn new(info_hash: [u8; 20], config: &Configuration) -> Handshake {
+		Handshake {
+			extensions: config.extensions,
+			info_hash,
+			peer_id: config.peer_id
+		}
+	}
 }
 
 #[derive(Debug)]
@@ -105,6 +118,7 @@ impl Wire {
 	///
 	/// # Cancel safety
 	/// This method IS NOT cancel safe
+	#[deprecated = "Use either receive_handshake or send_handshake depending on the initiator"]
 	pub async fn handshake(&mut self, handshake: &Handshake) -> Result<Handshake> {
 		self.send_handshake(handshake).await?;
 		let peer_handshake = self.receive_handshake().await?;
@@ -125,7 +139,7 @@ impl Wire {
 	///
 	/// # Cancel safety
 	/// This method IS NOT cancel safe
-	async fn receive_handshake(&mut self) -> Result<Handshake> {
+	pub async fn receive_handshake(&mut self) -> Result<Handshake> {
 		let protocol_length = self.stream.read_u8().await?;
 
 		let mut protocol = vec![0u8; protocol_length as usize];
@@ -157,14 +171,13 @@ impl Wire {
 	///
 	/// # Cancel safety
 	/// This method IS NOT cancel safe
-	async fn send_handshake(&mut self, handshake: &Handshake) -> Result<()> {
+	pub async fn send_handshake(&mut self, handshake: &Handshake) -> Result<()> {
 		// Length prefixed protocol name
 		self.stream
 			.write_u8(PROTOCOL.len().try_into().unwrap())
 			.await?;
 		self.stream.write_all(PROTOCOL).await?;
 
-		// Supported extensions. Currently, none are supported.
 		self.stream.write_all(&handshake.extensions.0).await?;
 
 		self.stream.write_all(&handshake.info_hash).await?;

@@ -18,13 +18,23 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MetaInfo {
+	/// * Suggested file name where the file is to be saved (if one file).
+	/// * Suggested directory name where the files are to be saved (if multiple
+	/// files).
 	pub name: String,
-	pub length: usize,
+	/// Total size of the torrent in bytes
+	pub size: usize,
+	/// URL of the tracker where the torrent is to be announced
 	pub announce: String,
+	/// SHA-1 hash of the `Info` dictionary in the torrent file
 	pub info_hash: [u8; 20],
+	/// SHA-1 hash for each piece of the torrent
 	pub pieces: Vec<[u8; 20]>,
+	/// Size in bytes of each piece except the last, which is given by [`last_piece_size`](Self::last_piece_size)
 	pub piece_size: usize,
+	/// Size of the last piece in bytes
 	pub last_piece_size: usize,
+	/// Information for each file in the torrent
 	pub files: Vec<FileInfo>
 }
 
@@ -74,19 +84,19 @@ impl TryFrom<&[u8]> for MetaInfo {
 			}
 		};
 
-		let length = files.iter().fold(0, |acc, x| acc + x.length);
+		let size = files.iter().fold(0, |acc, x| acc + x.length);
 
 		Ok(MetaInfo {
 			name: metadata.info.name,
-			length,
+			size,
 			announce: metadata.announce,
 			info_hash,
 			pieces,
 			piece_size: metadata.info.piece_length,
-			last_piece_size: if length % metadata.info.piece_length == 0 {
+			last_piece_size: if size % metadata.info.piece_length == 0 {
 				metadata.info.piece_length
 			} else {
-				length % metadata.info.piece_length
+				size % metadata.info.piece_length
 			},
 			files
 		})
@@ -132,7 +142,13 @@ mod raw {
 		/// Number of bytes per piece
 		#[serde(rename = "piece length")]
 		pub piece_length: usize,
-		/// A hash list, i.e., a concatenation of each piece's SHA-1 hash. As SHA-1 returns a 160-bit hash, pieces will be a string whose length is a multiple of 20 bytes. If the torrent contains multiple files, the pieces are formed by concatenating the files in the order they appear in the files dictionary (i.e. all pieces in the torrent are the full piece length except for the last piece, which may be shorter)
+		/// A hash list, i.e., a concatenation of each piece's SHA-1 hash. As
+		/// SHA-1 returns a 160-bit hash, pieces will be a string whose length
+		/// is a multiple of 20 bytes. If the torrent contains multiple files,
+		/// the pieces are formed by concatenating the files in the order they
+		/// appear in the files dictionary (i.e. all pieces in the torrent are
+		/// the full piece length except for the last piece, which may be
+		/// shorter)
 		pub pieces: serde_bytes::ByteBuf
 	}
 
@@ -166,7 +182,7 @@ mod tests {
 	fn test_parse() {
 		let sample_torrent_meta_info = MetaInfo {
 			name: "sample.txt".to_string(),
-			length: 20,
+			size: 20,
 			announce: "udp://tracker.openbittorrent.com:80".to_string(),
 			info_hash: [
 				136, 250, 95, 136, 226, 2, 250, 155, 100, 55, 160, 172, 184, 222, 165, 99, 222, 40,

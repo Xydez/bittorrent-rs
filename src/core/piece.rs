@@ -39,16 +39,12 @@ pub enum Priority {
 pub enum State {
 	/// The piece is ignored and should not be downloaded
 	Ignore,
-	/// The piece is marked for download and should be selected by a peer worker
+	/// The piece has been marked for download
 	Pending,
-	/// The piece has been selected by a peer worker and is being downloaded
-	Downloading,
-	/// The piece has been downloaded and should be selected by a verification worker
-	Downloaded,
-	/// The piece has been selected by a verification worker and is being verified
+	/// The piece has been downloaded and is awaiting verification
 	Verifying,
-	/// The piece has been verified and should be written to the store
-	Verified,
-	/// The piece has been completed and written to the store
+	/// The piece has been verified and is being written to the store
+	Writing,
+	/// The piece has been downloaded, verified and written to the store
 	Done
 }

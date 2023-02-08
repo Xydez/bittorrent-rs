@@ -1,7 +1,5 @@
 use thiserror::Error;
 
-use crate::core::bitfield::Bitfield;
-
 #[derive(Error, Debug)]
 pub enum Error {
 	#[error("Message ids must be between 0-8 (Got {0})")]
@@ -35,7 +33,7 @@ pub enum Message {
 
 	/// 'Bifield' sends the pieces that the peer serving the file has initial access to. May only be sent directly after handshake.
 	/// * bitfield - Pieces being served
-	Bitfield(Bitfield),
+	Bitfield(Vec<u8>),
 
 	/// 'Request' requests a block from the peer serving the file.
 	/// * index - Piece index,
@@ -77,8 +75,6 @@ impl TryFrom<&[u8]> for Message {
 	type Error = Error;
 
 	fn try_from(buffer: &[u8]) -> Result<Self> {
-		// Messages of length zero are keepalives, and ignored. Keepalives are generally sent once every two minutes, but note that timeouts can be done much more quickly when data is expected.
-
 		if buffer.is_empty() {
 			return Ok(Message::KeepAlive);
 		}
@@ -103,7 +99,7 @@ impl TryFrom<&[u8]> for Message {
 			4 => Ok(Message::Have(u32::from_be_bytes(
 				payload.try_into().map_err(|_| Error::InvalidPayload)?
 			))),
-			5 => Ok(Message::Bitfield(Bitfield::from_bytes(payload))),
+			5 => Ok(Message::Bitfield(payload.to_vec())),
 			6 => {
 				if payload.len() == 3 * std::mem::size_of::<u32>() {
 					Ok(Message::Request(
@@ -152,7 +148,7 @@ impl From<Message> for Vec<u8> {
 
 		match message {
 			Message::Have(index) => data.extend(index.to_be_bytes()),
-			Message::Bitfield(bitfield) => data.extend(bitfield.as_bytes()),
+			Message::Bitfield(bitfield) => data.extend(bitfield),
 			Message::Request(index, begin, length) => data.extend(
 				[
 					index.to_be_bytes(),

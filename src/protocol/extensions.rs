@@ -28,7 +28,7 @@ pub struct ExtensionNegotiation {
 /// | 62    | XBT Peer Exchange                      |
 /// | 63    | XBT Metadata Exchange                  |
 /// | 63    | DHT                                    |
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Extensions(pub [u8; 8]);
 
 macro_rules! gen_accessors {

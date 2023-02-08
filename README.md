@@ -17,15 +17,7 @@ async fn main() {
     let (session, _) = Session::spawn();
     let meta_info = MetaInfo::load("sample.torrent").unwrap();
 
-    let store = FileStore::new(
-        "downloads",
-        meta_info.piece_size,
-        meta_info.files
-            .iter()
-            .map(|file| (file.length, file.path.clone()))
-            .collect::<Vec<_>>()
-    )
-    .unwrap();
+    let store = FileStore::from_meta_info("downloads", &meta_info).unwrap();
 
     session.add_torrent(Torrent::new(meta_info, store));
 
@@ -67,6 +59,41 @@ async fn main() {
   * **Debug** - Events useful to debugging issues with the application
   * **Trace** - Redundant fine-grained details showing the step-by-step execution of the program
 
+### Diagrams
+**Diagram 1 - thread structure**
+```text
+┌───────────┐
+│Main thread│
+└┬┬─────────┘
+ ┊┊
+ │└─────────────┐
+┌┴────────────┐┌┴───┐
+│SessionHandle├┤Task│
+└┬────────────┘└┬───┘
+ ├──────────────┘
+┌┴──────┐
+│Session│
+└┬┬─────┘
+ ┊┊
+ │└─────────────┐
+┌┴────────────┐┌┴───┐
+│TorrentHandle├┤Task│
+└┬────────────┘└┬───┘
+ ├──────────────┘
+┌┴──────┐
+│Torrent│
+└┬┬─────┘
+ ┊┊
+ │└──────────┐
+┌┴─────────┐┌┴───┐
+│PeerHandle├┤Task│
+└┬─────────┘└┬───┘
+ ├───────────┘
+┌┴───┐
+│Peer│
+└────┘
+```
+
 ## TODO
 ### Investigations
 * Find a way to use `Sink` and `Stream` with `Wire`
@@ -86,6 +113,9 @@ async fn main() {
 * Check if we should `Weak` instead of `Arc` for some things that should not be kept alive
 * Look for ways to optimize away some mutexes/rwlocks
 * Use `Bytes` where applicable
+* Cache pieces with lowest availability (likely to be most popular)
+* Check if we have any large stack allocations
+* We should have `Arc<Torrent>` which contains `Mutex<TorrentState>` so that immutable fields of the torrent (e.g. meta_info) can be accessed without locking
 
 ### Features
 * Magnet links
@@ -98,31 +128,35 @@ async fn main() {
 * Standardize more of the code
   * Piece ID and piece size
   * Change all incorrect instances of *length* into *size*
-* It might be a good idea to let multiple peers work on the same piece normally
-  * We could change the PieceIterator to no longer have a "current download" and just check the ongoing `torrent.downloads` before calling the picker.
-  * This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways
 * Rename maybe_blocks in worker to "out_of_blocks" or something which is clearer
-* Don't connect to all peers received in Announce (See inofficial spec)
-  * Follow the recommendations
-    * Only actively form connections if client has less than 30 peers
-    * Refuse connections after client has a maximum of 55 peers
-  * PeerConnected messages
+* PeerConnected messages
 * Make a lot of things pub(crate) instead of pub
-* Properly manage the tasks of peer workers
-  * We can join the workers in the event loop
-* `pretty-assertions` dev dependency
+* Tracker announce interval similar to peer keepalive
+* ~~It might be a good idea to let multiple peers work on the same piece normally~~
+  * ~~We could change the PieceIterator to no longer have a "current download" and just check the ongoing `torrent.downloads` before calling the picker.~~
+  * ~~This might even mean we could get rid of the PieceIterator which looks like an ugly workaround anyways~~
+* ~~Properly manage the tasks of peer workers~~
+  * ~~We can join the workers in the event loop~~
+* ~~Don't connect to all peers received in Announce (See inofficial spec)~~
+  * ~~Follow the recommendations~~
+    * ~~Only actively form connections if client has less than 30 peers~~
+    * ~~Refuse connections after client has a maximum of 50 peers~~
 
 ### Notes
-* Make sure all Worker in session.peers are alive
-  * Remember to join the tasks
-* Make sure piece.availability is updated
 * Send `bittorrent::wire::Message::Cancel` if session shuts down during download
 * Announce started/completed/stopped to tracker
+  * Stop command for torrent task
 * Update `piece.availability` when bitfield/have is received
 * Proper fix for endgame
   * The principle is: when all blocks are downloading the remaining peers may download already downloading blocks
 * Find a way to receive when a block has been cancelled
   * I think passing a broadcast to all `get_block` instances is the best way to do this
+* "The rule of thumb: use Mutex unless you know what you are doing."
+* Add assertions to check the `Configuration` for faulty values
+* Don't just drop `Receiver`, instead call `close`
+* In order to not have Session/Torrent/Peer constantly locked, we can attempt to move some things (senders/receivers mainly) into the task
+* ~~Make sure all Worker in session.peers are alive~~
+  * ~~Remember to join the tasks~~
 
 ### Problems
 * Fix this warning
@@ -130,3 +164,25 @@ async fn main() {
   * Maybe this occurrs if two peers are downloading the same block and one of them sets the block to pending, or something? Probably scratch that but..
 * Fix sometimes getting stuck near end
   * `INFO [bittorrent_cli]    0 PENDING   3 DOWNLOADING   0 VERIFYING  1330 DONE   0 OTHER`
+* `choked during download` is displayed twice as both a warning and error
+
+### Last coding session stuff
+* Check what min_interval is usually sent and steal that for default in config
+* Check out all todos and make sure everything is good
+* ~~`INFO [bittorrent::core::peer::task] [294f7064] Creating download, 420 concurrent piece downloads` lmaooo~~
+* Many repeated pieces received ([log](logs/bittorrent-cli_2023-01-29_14-39-48.log)):
+
+```
+INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
+INFO [bittorrent::core::peer::task] [43734f4b] Creating download, 4 concurrent piece downloads
+INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
+INFO [bittorrent::core::peer::task] [43734f4b] Creating download, 4 concurrent piece downloads
+INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
+INFO [bittorrent::core::peer::task] [61317769] Creating download, 4 concurrent piece downloads
+INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
+INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
+```
+
+* Add number of peers to log messages in main.rs
+* Add tracing?
+  * Chrome debugging shit thing to see what's going on, maybe see TheCherno's video

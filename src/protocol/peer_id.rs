@@ -242,6 +242,7 @@ impl PeerId {
 			});
 		}
 
+		// TODO: Shadow's style
 		// Shadow's style uses the following encoding: one ascii alphanumeric for client identification, up to five characters for version number (padded with '-' if less than five), followed by three characters (commonly '---', but not always the case), followed by random characters. Each character in the version string represents a number from 0 to 63. '0'=0, ..., '9'=9, 'A'=10, ..., 'Z'=35, 'a'=36, ..., 'z'=61, '.'=62, '-'=63.
 
 		Err(Error::UnknownFormat)
@@ -296,9 +297,10 @@ struct Client {
 /// https://github.com/webtorrent/bittorrent-peerid/blob/master/test/basic.js
 #[cfg(test)]
 mod tests {
+	use pretty_assertions::assert_eq;
+
 	use super::*;
 	use crate::core::util;
-	use pretty_assertions::assert_eq;
 
 	#[test]
 	fn test_azureus() {
@@ -427,7 +429,7 @@ mod tests {
 			})
 		);
 
-		// TODO: Three digits plus mnemonic (Alpha, Beta)
+		// Three digits plus mnemonic (Alpha, Beta)
 		assert_eq!(
 			PeerId::parse_hex("2D5554313730422D928446441DB0A094A01C01E5"),
 			Ok(PeerId {
@@ -477,7 +479,7 @@ mod tests {
 		// Style::BitComet
 		// 6578626300387A4463102D6E9AD6723B339F35A9
 
-		// TODO: A.B.C-D
+		// A.B.C-D
 		/*
 		assert_eq!(PeerId::try_from(b"-PC251Q-6huHF5Pr7Vde"), Ok(PeerId {
 			name: Some("CacheLogic".to_string()),
@@ -513,7 +515,7 @@ mod tests {
 	assert_eq!(PeerId::parse(b"-AR1670-3Ql6wM3hgtCc"), Ok(PeerId {
 		name: Some("Ares".to_string()),
 		name_short: "AR".to_string(),
-		version: Version::new(1, 6, Some(7), Some(0)), // TODO: Are we sure it's not 1.6.7?
+		version: Version::new(1, 6, Some(7), Some(0)), // Are we sure it's not 1.6.7?
 		random: b"3Ql6wM3hgtCc".to_vec()
 	}));
 

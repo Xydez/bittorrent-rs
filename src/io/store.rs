@@ -5,29 +5,37 @@ use std::{
 	path::{Path, PathBuf}
 };
 
-use crate::{core::torrent::ResumeData, protocol::metainfo::MetaInfo};
+use crate::{
+	core::torrent::{
+		resume::{Resume, ResumeData},
+		ResumeError
+	},
+	protocol::metainfo::MetaInfo
+};
+
+type Error = Box<dyn std::error::Error>;
 
 pub trait Store: std::fmt::Debug + Send {
-	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Box<dyn std::error::Error>>;
-	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>>;
+	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Error>;
+	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Error>;
 
 	/// Calculate the checksum of all existing pieces in the store
-	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>>;
+	fn checksum(&mut self) -> Result<u64, Error>;
 }
 
 #[derive(Debug)]
 pub struct NullStore;
 
 impl Store for NullStore {
-	fn get(&mut self, _piece: usize) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
+	fn get(&mut self, _piece: usize) -> Result<Option<Vec<u8>>, Error> {
 		unimplemented!("NullStore cannot be read");
 	}
 
-	fn set(&mut self, _piece: usize, _data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+	fn set(&mut self, _piece: usize, _data: &[u8]) -> Result<(), Error> {
 		Ok(())
 	}
 
-	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
+	fn checksum(&mut self) -> Result<u64, Error> {
 		unimplemented!("NullStore cannot calculate a checksum");
 	}
 }
@@ -47,17 +55,17 @@ impl MemoryStore {
 }
 
 impl Store for MemoryStore {
-	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
+	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Error> {
 		Ok(self.data[piece].clone())
 	}
 
-	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Error> {
 		self.data[piece] = Some(data.to_vec());
 
 		Ok(())
 	}
 
-	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
+	fn checksum(&mut self) -> Result<u64, Error> {
 		let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
 		for piece in self.data.iter().filter_map(|val| val.as_ref()) {
@@ -70,7 +78,7 @@ impl Store for MemoryStore {
 
 #[derive(Debug)]
 pub struct FileStore {
-	piece_length: usize,
+	piece_size: usize,
 	pub(crate) directory: PathBuf,
 	/// Opened files within the store and path not including base directory
 	files: Vec<(usize, PathBuf, File)>,
@@ -78,12 +86,12 @@ pub struct FileStore {
 }
 
 impl FileStore {
-	/// Creates a file store using the given piece length and files
+	/// Creates a file store using the given piece size and files
 	///
 	/// The total length is calculated from the sum of the file sizes
 	pub fn new(
 		directory: impl AsRef<Path>,
-		piece_length: usize,
+		piece_size: usize,
 		files: impl IntoIterator<Item = (usize, PathBuf)>
 	) -> std::io::Result<FileStore> {
 		let files = files
@@ -110,11 +118,11 @@ impl FileStore {
 				.iter()
 				.map(|(length, _, _)| length)
 				.sum::<usize>()
-				.div_ceil(piece_length)
+				.div_ceil(piece_size)
 		];
 
 		Ok(FileStore {
-			piece_length,
+			piece_size,
 			directory: directory.as_ref().to_path_buf(),
 			files,
 			has_pieces
@@ -137,13 +145,18 @@ impl FileStore {
 	}
 
 	#[cfg(feature = "resume")]
-	pub fn resume(
+	pub fn resume(directory: impl AsRef<Path>) -> impl Resume<FileStore> {
+		FileStoreResume {
+			directory: directory.as_ref().to_path_buf()
+		}
+	}
+
+	#[cfg(feature = "resume")]
+	pub fn resume_old(
 		directory: impl AsRef<Path>,
 		resume_data: ResumeData
 	) -> Result<FileStore, crate::core::torrent::ResumeError> {
-		use crate::core::torrent::ResumeError;
-
-		let mut store = Self::from_meta_info(directory, resume_data.meta_info)?;
+		let mut store = Self::from_meta_info(directory, &resume_data.meta_info)?;
 		store.has_pieces = resume_data.pieces.clone();
 
 		if resume_data.checksum != store.checksum()? {
@@ -196,14 +209,14 @@ impl FileStore {
 }
 
 impl Store for FileStore {
-	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-		assert!(data.len() <= self.piece_length);
+	fn set(&mut self, piece: usize, data: &[u8]) -> Result<(), Error> {
+		assert!(data.len() <= self.piece_size);
 
 		let mut remaining_bytes = data.len();
 
 		while remaining_bytes > 0 {
 			// Index of the byte we are writing
-			let index = piece * self.piece_length + data.len() - remaining_bytes;
+			let index = piece * self.piece_size + data.len() - remaining_bytes;
 			let file_index = self.file_of_byte(index).unwrap_or_else(|| {
 				panic!(
 					"Failed to set piece {}. Byte is out of bounds ({} >= {})",
@@ -231,16 +244,16 @@ impl Store for FileStore {
 		Ok(())
 	}
 
-	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Box<dyn std::error::Error>> {
-		let mut data = Vec::with_capacity(self.piece_length);
+	fn get(&mut self, piece: usize) -> Result<Option<Vec<u8>>, Error> {
+		let mut data = Vec::with_capacity(self.piece_size);
 
 		if !self.has_pieces[piece] {
 			return Ok(None);
 		}
 
-		while data.len() < self.piece_length {
-			let remaining_bytes = self.piece_length - data.len();
-			let index = (piece + 1) * self.piece_length - remaining_bytes;
+		while data.len() < self.piece_size {
+			let remaining_bytes = self.piece_size - data.len();
+			let index = (piece + 1) * self.piece_size - remaining_bytes;
 			let file_index = if let Some(index) = self.file_of_byte(index) {
 				index
 			} else {
@@ -263,7 +276,7 @@ impl Store for FileStore {
 		Ok(Some(data))
 	}
 
-	fn checksum(&mut self) -> Result<u64, Box<dyn std::error::Error>> {
+	fn checksum(&mut self) -> Result<u64, Error> {
 		let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
 		for i in 0..self.has_pieces.len() {
@@ -276,10 +289,30 @@ impl Store for FileStore {
 	}
 }
 
+struct FileStoreResume {
+	directory: std::path::PathBuf
+}
+
+impl Resume<FileStore> for FileStoreResume {
+	type Error = ResumeError;
+
+	fn resume(self, resume_data: &ResumeData) -> Result<FileStore, Self::Error> {
+		let mut store = FileStore::from_meta_info(self.directory, &resume_data.meta_info)?;
+		store.has_pieces = resume_data.pieces.clone();
+
+		if resume_data.checksum != store.checksum()? {
+			Err(ResumeError::InvalidChecksum)
+		} else {
+			Ok(store)
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use pretty_assertions::assert_eq;
+
+	use super::*;
 
 	#[test]
 	#[cfg_attr(not(feature = "io-tests"), ignore)]

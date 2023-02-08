@@ -19,7 +19,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub async fn get_block(
 	pid: String,
 	_permit: tokio::sync::OwnedSemaphorePermit,
-	//piece_download: Arc<Mutex<PieceDownload>>,
 	piece: PieceId,
 	(block_begin, block_size): (u32, u32),
 	message_tx: tokio::sync::mpsc::Sender<Message>,
@@ -31,6 +30,7 @@ pub async fn get_block(
 		block_begin,
 		block_begin + block_size
 	);
+
 	message_tx
 		.send(Message::Request(piece, block_begin, block_size))
 		.await
@@ -51,16 +51,9 @@ pub async fn get_block(
 
 				Ok(data)
 			}
-			Ok(Message::Choke) => {
-				log::warn!("[{pid}] choked during download");
-				Err(Error::Choked)
-			}
-			Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-				log::trace!("[{pid}] get_block shutting down");
-				Err(Error::Shutdown)
-			}
+			Ok(Message::Choke) => Err(Error::Choked),
+			Err(tokio::sync::broadcast::error::RecvError::Closed) => Err(Error::Shutdown),
 			Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
-				log::error!("[{pid}] get_block lagged behind {count} messages");
 				Err(Error::Lagged(count))
 			}
 			_ => continue

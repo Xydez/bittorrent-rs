@@ -1,5 +1,17 @@
-use thiserror::Error;
+use std::{
+	future::Future,
+	sync::{atomic::AtomicU32, Arc}
+};
 
+use thiserror::Error;
+use tokio::sync::Mutex;
+
+use super::{
+	configuration::Configuration,
+	event::{PeerEvent, Sender},
+	session::{PeerPtr, TorrentPtr},
+	torrent::WorkerId
+};
 use crate::{
 	core::{bitfield::Bitfield, piece::PieceId, util},
 	protocol::{
@@ -13,21 +25,43 @@ use crate::{
 	}
 };
 
+mod block_worker;
+pub(crate) mod task;
+
 #[derive(Error, Debug)]
-pub enum PeerError {
+pub enum Error {
+	#[error("Request timed out")]
+	Timeout(#[from] tokio::time::error::Elapsed),
 	#[error("An error occurred within the wire protocol.")]
-	WireError(#[from] wire::connection::Error)
+	WireError(#[from] wire::connection::Error),
+	#[error("The peer sent an illegal message: {0}")]
+	IllegalMessage(Message)
 }
 
-pub type Result<T> = std::result::Result<T, PeerError>;
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Atomic counter used to generate worker identifiers
+static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Debug)]
+pub struct PeerHandle {
+	data: PeerPtr,
+	pub(crate) _mode_tx: tokio::sync::watch::Sender<task::Mode> // TODO: Should be managed in torrent task
+}
+
+impl PeerHandle {
+	pub fn data(&self) -> &PeerPtr {
+		&self.data
+	}
+}
 
 /// Abstraction of Wire that maintains peer state
 #[derive(Debug)]
 pub struct Peer {
+	id: WorkerId,
 	wire: Wire,
 	peer_id: [u8; 20],
 
-	// TODO: Maybe store as u64 or as an Extensions type.
 	/// The extensions the peer supports
 	extensions: Extensions,
 
@@ -49,31 +83,44 @@ pub struct Peer {
 }
 
 impl Peer {
-	/// Connects to a peer and perform a handshake
-	pub async fn connect<T: tokio::net::ToSocketAddrs>(
-		addr: T,
-		handshake: Handshake
-	) -> std::io::Result<Result<Peer>> {
-		Ok(Peer::handshake(Wire::connect(addr).await?, handshake).await)
-	}
+	pub fn new(wire: Wire, handshake: Handshake) -> Peer {
+		let id = WORKER_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-	/// Performs a handshake with a peer
-	pub async fn handshake(mut wire: Wire, handshake: Handshake) -> Result<Peer> {
-		let peer_handshake = wire.handshake(&handshake).await?;
-
-		// TODO: If the initiator of the connection receives a handshake in which the peer_id does not match the expected peer_id, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
-
-		Ok(Peer {
+		Peer {
+			id,
 			wire,
-			peer_id: peer_handshake.peer_id,
-			extensions: peer_handshake.extensions,
+			peer_id: handshake.peer_id,
+			extensions: handshake.extensions,
 			am_choking: true,
 			am_interested: false,
 			peer_choking: true,
 			peer_interested: false,
 			peer_pieces: None,
 			last_message_sent: tokio::time::Instant::now()
-		})
+		}
+	}
+
+	pub async fn spawn(
+		mut self,
+		mode: task::Mode,
+		torrent: TorrentPtr,
+		event_tx: Sender<(WorkerId, PeerEvent)>,
+		config: Arc<Configuration>
+	) -> Result<(PeerHandle, impl Future<Output = Result<()>>)> {
+		let (mode_tx, mode_rx) = tokio::sync::watch::channel(mode);
+
+		self.peer_pieces = Some(Bitfield::new(torrent.meta_info.pieces.len()));
+
+		let data = Arc::new(Mutex::new(self));
+
+		let fut = task::run(config, torrent, data.clone(), event_tx, mode_rx);
+
+		let handle = PeerHandle {
+			data,
+			_mode_tx: mode_tx
+		};
+
+		Ok((handle, fut))
 	}
 
 	/// Send a message
@@ -100,12 +147,20 @@ impl Peer {
 			Message::Unchoke => self.peer_choking = false,
 			Message::Interested => self.peer_interested = true,
 			Message::NotInterested => self.peer_interested = false,
-			Message::Bitfield(data) => self.peer_pieces = Some(data.clone()),
+			Message::Bitfield(data) => {
+				let mut peer_pieces = self.peer_pieces.as_mut().unwrap();
+
+				peer_pieces |= &mut Bitfield::from_bytes_length(data, peer_pieces.len()).unwrap();
+			}
 			Message::Have(i) => self.peer_pieces.as_mut().unwrap().set(*i as usize, true),
 			_ => ()
 		};
 
 		Ok(message)
+	}
+
+	pub fn id(&self) -> WorkerId {
+		self.id
 	}
 
 	pub fn peer_id(&self) -> &[u8; 20] {
