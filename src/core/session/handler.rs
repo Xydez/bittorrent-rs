@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use log::{debug, info, warn};
+
 use crate::core::{
 	event::{Event, PeerEvent, PieceEvent, TorrentEvent},
 	piece,
@@ -14,7 +16,7 @@ pub async fn handle(session: &mut Session, event: &Event) {
 	let prefix = format!("{event}");
 
 	match &event {
-		Event::Started | Event::Stopped => log::info!("{prefix}"),
+		Event::Started | Event::Stopped => info!("{prefix}"),
 		Event::TorrentEvent(torrent_id, event) => {
 			handle_torrent_event(session, prefix, *torrent_id, event).await
 		}
@@ -30,17 +32,17 @@ async fn handle_torrent_event(
 	match event {
 		// TODO: Useless log messages
 		TorrentEvent::Added => {
-			log::warn!("added, do we keep this?");
+			info!("Torrent added (torrent_id={torrent_id})");
 		}
 		TorrentEvent::Announced(_response) => {
-			log::warn!("announced, do we keep this?");
+			info!("Torrent announced (torrent_id={torrent_id})");
 		}
 		TorrentEvent::PeerEvent(_peer, PeerEvent::BlockReceived(piece, block)) => {
 			let torrent = &session.torrents[&torrent_id].torrent;
 
 			let Some(download) = torrent.lock().await.state().downloads.get(piece).cloned() else {
 				// This probably means that the download succeeded but we did not cancel the piece
-				log::warn!("{prefix} | Download for block {} not found, block downloaded in vain", util::fmt_block(*piece, *block));
+				warn!("{prefix} | Download for block {} not found, block downloaded in vain", util::fmt_block(*piece, *block));
 				return;
 			};
 
@@ -54,7 +56,7 @@ async fn handle_torrent_event(
 					//lock.state_mut().pieces[*piece as usize].state = piece::State::Verifying;
 				}
 
-				log::debug!(
+				debug!(
 					"{prefix} | block={} | Final block received, emitting TorrentEvent::Downloaded",
 					util::fmt_block(*piece, *block)
 				);
@@ -70,13 +72,18 @@ async fn handle_torrent_event(
 		}
 		TorrentEvent::PieceEvent(piece, event) => match event {
 			PieceEvent::Downloaded(data) => {
-				log::debug!("{prefix} | Piece downloaded, starting verification worker");
+				debug!("{prefix} | Piece downloaded, starting verification worker");
 
 				let semaphore = session.verification_semaphore.clone();
 				let tx = session.tx.clone();
 				let piece = *piece;
 				let torrent = session.torrents[&torrent_id].torrent.clone();
 				let data = data.clone();
+
+				assert!(
+					torrent.lock().await.state().pieces[piece as usize].state
+						== piece::State::Pending
+				);
 
 				tokio::spawn(async move {
 					let _permit = semaphore.acquire_owned().await.unwrap();
@@ -99,7 +106,7 @@ async fn handle_torrent_event(
 				});
 			}
 			PieceEvent::Verified(data) => {
-				log::debug!("{prefix} | Piece verified, writing to store");
+				debug!("{prefix} | Piece verified, writing to store");
 
 				// Store the piece
 				let tx = session.tx.clone();
@@ -107,8 +114,16 @@ async fn handle_torrent_event(
 				let torrent = session.torrents[&torrent_id].torrent.clone();
 				let piece = *piece;
 
+				assert!(
+					torrent.lock().await.state().pieces[piece as usize].state
+						== piece::State::Verifying
+				);
+
 				// TODO: (Maybe) push the data onto an io writer queue or similar?
 				tokio::spawn(async move {
+					torrent.lock().await.state_mut().pieces[piece as usize].state =
+						piece::State::Writing;
+
 					{
 						let torrent = torrent.clone();
 
@@ -123,9 +138,6 @@ async fn handle_torrent_event(
 						.unwrap();
 					}
 
-					torrent.lock().await.state_mut().pieces[piece as usize].state =
-						piece::State::Done;
-
 					tx.send(Event::TorrentEvent(
 						torrent.id,
 						TorrentEvent::PieceEvent(piece, PieceEvent::Done)
@@ -134,6 +146,9 @@ async fn handle_torrent_event(
 				});
 			}
 			PieceEvent::Done => {
+				let torrent = session.torrents[&torrent_id].torrent.clone();
+				torrent.lock().await.state_mut().pieces[*piece as usize].state = piece::State::Done;
+
 				if session.torrents[&torrent_id].torrent.lock().await.is_done() {
 					session
 						.tx
@@ -143,7 +158,7 @@ async fn handle_torrent_event(
 			}
 		},
 		TorrentEvent::Done => {
-			log::info!("{prefix}");
+			info!("{prefix}");
 
 			session.torrents[&torrent_id].complete().await;
 		}

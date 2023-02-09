@@ -1,5 +1,6 @@
 use std::{net::Ipv4Addr, sync::Arc};
 
+use log::{error, trace};
 use tokio::{
 	net::{TcpListener, TcpStream},
 	sync::Mutex
@@ -77,19 +78,19 @@ pub async fn run(
 			result = listener.accept() => {
 				match result {
 					Ok((stream, addr)) => {
-						log::trace!("Incoming connection accepted with address {addr}");
+						trace!("Incoming connection accepted with address {addr}");
 
 						match handle_connection(&*session.lock().await, stream).await {
 							Ok((peer, torrent)) => {
 								torrent.add_conn(peer);
 							}
 							Err(error) => {
-								log::error!("Failed to perform handshake with address {addr}: {}", util::error_chain(error));
+								error!("Failed to perform handshake with address {addr}: {}", util::error_chain(error));
 							}
 						}
 					},
 					Err(error) => {
-						log::error!("Failed to accept incoming connection: {}", util::error_chain(error));
+						error!("Failed to accept incoming connection: {}", util::error_chain(error));
 					}
 				}
 			}
@@ -97,7 +98,7 @@ pub async fn run(
 		}
 	}
 
-	log::trace!("Session is shutting down");
+	trace!("Session is shutting down");
 	//self.shutdown().await;
 }
 

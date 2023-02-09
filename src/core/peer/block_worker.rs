@@ -1,5 +1,6 @@
 //! A block worker is responsible for downloading a block from a peer
 
+use log::trace;
 use thiserror::Error;
 
 use crate::{core::piece::PieceId, protocol::wire::message::Message};
@@ -24,7 +25,7 @@ pub async fn get_block(
 	message_tx: tokio::sync::mpsc::Sender<Message>,
 	mut message_rx: tokio::sync::broadcast::Receiver<Message>
 ) -> Result<Vec<u8>> {
-	log::trace!(
+	trace!(
 		"[{pid}] Requesting block {}:[{}-{}]",
 		piece,
 		block_begin,
@@ -36,13 +37,13 @@ pub async fn get_block(
 		.await
 		.unwrap();
 
-	let result = loop {
+	loop {
 		break match message_rx.recv().await {
 			Ok(Message::Piece(index, begin, data))
 				if index == piece && begin == block_begin && data.len() == block_size as usize =>
 			{
 				// We received the block
-				log::trace!(
+				trace!(
 					"[{pid}] Received block {}:[{}-{}]",
 					piece,
 					block_begin,
@@ -58,7 +59,5 @@ pub async fn get_block(
 			}
 			_ => continue
 		};
-	};
-
-	result
+	}
 }

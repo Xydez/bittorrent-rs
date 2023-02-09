@@ -18,13 +18,18 @@ use crate::core::{
 	piece::{PieceId, Priority}
 };
 
-/// Selects a new piece according to the following priority rules
+// TODO: In all honesty we really don't want async hhere..
+/// Selects a NEW piece according to the following priority rules
 /// 1. Download all pieces with [`Priority::Highest`] in random order
 /// 2. If there are less than 4 complete pieces, download a random piece
 /// 3. Download pieces sorted by descending priority, then ascending availability, using a weighted probability distribution where `weight(x) = floor(256 / 2^x)`\*.
 ///
 /// \* In practice this means choosing a random piece of the 8 most rare pieces.
-pub fn select_piece(torrent: &TorrentLock, peer: &Peer, config: &Configuration) -> Option<PieceId> {
+pub async fn select_piece(
+	torrent: &TorrentLock<'_>,
+	peer: &Peer,
+	config: &Configuration
+) -> Option<PieceId> {
 	// If there is any piece of priority Highest with state Pending, download it
 	if let Some(i) = torrent
 		.pieces()
@@ -56,12 +61,16 @@ pub fn select_piece(torrent: &TorrentLock, peer: &Peer, config: &Configuration) 
 	// If we have at least four complete pieces, use a "rarest piece first" so we will have more unusual pieces, which will be helpful in the trade with other peers.
 	torrent
 		.pieces()
-		.filter(|(i, _)| peer.has_piece(*i))
+		.filter(|(i, piece)| piece.state == State::Pending && peer.has_piece(*i))
 		.collect::<Vec<_>>()
 		.tap_mut(|pieces| {
-			pieces.sort_by(|(_, a), (_, b)| {
-				b.priority
-					.cmp(&a.priority)
+			pieces.sort_by(|(a_id, a), (b_id, b)| {
+				torrent
+					.state()
+					.downloads
+					.contains_key(a_id)
+					.cmp(&torrent.state().downloads.contains_key(b_id))
+					.then(b.priority.cmp(&a.priority))
 					.then(a.availability.cmp(&b.availability))
 			})
 		})
@@ -81,12 +90,18 @@ pub fn select_piece(torrent: &TorrentLock, peer: &Peer, config: &Configuration) 
 ///
 /// 1. Download all pending blocks in order
 /// 2. If no pending blocks are found, download the block with the least amount of workers currently working on it
-pub fn select_block(download: &PieceDownload, worker_id: WorkerId) -> Option<usize> {
+pub fn select_block(
+	download: &PieceDownload,
+	worker_id: WorkerId,
+	end_game: bool
+) -> Option<usize> {
 	download
 		.blocks
 		.iter()
 		.enumerate()
+		// Filter only pending blocks
 		.filter(|(_, block)| block.data.is_none())
+		// Filter only blocks not already being downloaded by the same worker id
 		.filter(|(i, _)| {
 			!download
 				.block_downloads
@@ -105,9 +120,10 @@ pub fn select_block(download: &PieceDownload, worker_id: WorkerId) -> Option<usi
 					.count()
 			)
 		})
+		.filter(|(_, worker_count)| end_game || *worker_count == 0)
 		.collect::<Vec<_>>()
 		.tap_mut(|vec| {
-			vec.sort_by(
+			vec.sort_unstable_by(
 				|(block_id_a, worker_count_a), (block_id_b, worker_count_b)| {
 					worker_count_a
 						.cmp(worker_count_b)

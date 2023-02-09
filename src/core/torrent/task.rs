@@ -44,6 +44,7 @@ use std::{
 	sync::Arc
 };
 
+use log::{error, info, trace, warn};
 use rand::Rng;
 use thiserror::Error;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -177,7 +178,7 @@ pub async fn run(
 							.send_handshake(&Handshake::new(info_hash, &config))
 							.await
 						{
-							log::error!(
+							error!(
 								"Failed to send handsake to peer: {}",
 								util::error_chain(error)
 							);
@@ -187,7 +188,7 @@ pub async fn run(
 						let handshake = match wire.receive_handshake().await {
 							Ok(handshake) => handshake,
 							Err(error) => {
-								log::error!(
+								error!(
 									"Failed to receive handshake from peer: {}",
 									util::error_chain(error)
 								);
@@ -200,7 +201,7 @@ pub async fn run(
 						conn_tx.send((peer, Some(permit))).unwrap();
 					}
 					Err(error) => {
-						log::error!(
+						trace!(
 							"An error occurred while establishing a connection with a peer: {}",
 							util::error_chain(error)
 						);
@@ -238,9 +239,9 @@ pub async fn run(
 						// Join all workers
 						while let Some((worker_id, ret)) = worker_set.join_next().await {
 							if let Err(err) = ret.expect("worker panicked") {
-								log::error!("worker {worker_id} joined with an error: {}", util::error_chain(err));
+								error!("worker {worker_id} joined with an error: {}", util::error_chain(err));
 							} else {
-								log::trace!("worker {worker_id} joined");
+								trace!("worker {worker_id} joined");
 							}
 						}
 
@@ -250,7 +251,7 @@ pub async fn run(
 						let mut lock = torrent.lock().await;
 
 						if lock.left() > 0 {
-							log::warn!("Command::Complete received even though there are {} bytes left until completion", lock.left());
+							warn!("Command::Complete received even though there are {} bytes left until completion", lock.left());
 						}
 
 						let announce = Announce {
@@ -275,9 +276,9 @@ pub async fn run(
 				let pid = peer_handle.data().lock().await.peer_id_short();
 
 				if let Err(err) = ret.expect("worker panicked") {
-					log::error!("Worker {worker_id} for peer {pid} joined early ({} total peers). Error: {}", worker_set.len(), util::error_chain(err));
+					error!("Worker {worker_id} for peer {pid} joined early ({} total peers). Error: {}", worker_set.len(), util::error_chain(err));
 				} else {
-					log::warn!("worker {worker_id} for peer {pid} joined early ({} total peers)", worker_set.len());
+					warn!("worker {worker_id} for peer {pid} joined early ({} total peers)", worker_set.len());
 				}
 			},
 			// 3. Start workers on successful connections
@@ -295,7 +296,7 @@ pub async fn run(
 				let (handle, task) = match peer.spawn(mode, torrent.clone(), torrent_event_tx.clone(), config.clone()).await {
 					Ok(val) => val,
 					Err(error) => {
-						log::error!("Failed to establish protocol with peer {pid}. Error: {}", util::error_chain(error));
+						error!("Failed to establish protocol with peer {pid}. Error: {}", util::error_chain(error));
 						continue;
 					}
 				};
@@ -303,7 +304,7 @@ pub async fn run(
 				worker_set.spawn(worker_id, task);
 				worker_data.insert(worker_id, (handle, permit_opt));
 
-				log::info!("Connected to peer {pid} ({} peers)", worker_set.len());
+				info!("Connected to peer {pid} ({} peers)", worker_set.len());
 			}
 
 			// 4. Find new peers (must also adhere to min_interval / some config setting)
@@ -354,7 +355,7 @@ pub async fn run(
 	}
 
 	// 4. Shutdown
-	log::trace!("Torrent shutting down");
+	trace!("Torrent shutting down");
 
 	// Announce shutdown
 	{
@@ -384,27 +385,28 @@ async fn try_announce(
 	announce: Announce,
 	config: &Configuration
 ) -> Option<Response> {
-	log::info!("Announcing to tracker \"{}\"", tracker.announce_url());
-
 	for i in 0..config.announce_attempts {
-		match tracker.announce(&announce).await {
-			Ok(response) => return Some(response),
-			Err(tracker::Error::InvalidUrl) => {
-				log::error!("Failed to announce: Invalid announce url");
+		info!(
+			"Announcing to tracker \"{}\" (attempt {}/{})",
+			tracker.announce_url(),
+			i + 1,
+			config.announce_attempts
+		);
 
-				return None;
+		match tracker.announce(&announce).await {
+			Ok(response) => {
+				info!("Announce success: {response:#?}");
+
+				return Some(response);
 			}
 			Err(error) => {
-				log::error!("Failed to announce: {}", util::error_chain(error));
+				error!("Failed to announce: {}", util::error_chain(&error));
+
+				if let tracker::Error::InvalidUrl = error {
+					return None;
+				}
 
 				tokio::time::sleep(config.announce_retry_delay).await;
-
-				log::info!(
-					"Retrying announce to tracker \"{}\" (attempt {}/{})",
-					tracker.announce_url(),
-					i + 2,
-					config.announce_attempts
-				);
 			}
 		}
 	}

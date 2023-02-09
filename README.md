@@ -169,19 +169,8 @@ async fn main() {
 ### Last coding session stuff
 * Check what min_interval is usually sent and steal that for default in config
 * Check out all todos and make sure everything is good
-* ~~`INFO [bittorrent::core::peer::task] [294f7064] Creating download, 420 concurrent piece downloads` lmaooo~~
-* Many repeated pieces received ([log](logs/bittorrent-cli_2023-01-29_14-39-48.log)):
-
-```
-INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
-INFO [bittorrent::core::peer::task] [43734f4b] Creating download, 4 concurrent piece downloads
-INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
-INFO [bittorrent::core::peer::task] [43734f4b] Creating download, 4 concurrent piece downloads
-INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
-INFO [bittorrent::core::peer::task] [61317769] Creating download, 4 concurrent piece downloads
-INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
-INFO [bittorrent_cli] 1371 PENDING   0 DOWNLOADING   0 VERIFYING    17 DONE   0 OTHER
-```
+* Random data and crash fix
+  * Also really fucking good job today mate, eh?
 
 * Add number of peers to log messages in main.rs
 * Add tracing?

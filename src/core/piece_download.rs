@@ -1,5 +1,7 @@
 use std::{collections::VecDeque, sync::Arc};
 
+use log::debug;
+
 use super::torrent::WorkerId;
 use crate::core::configuration::Configuration;
 
@@ -34,7 +36,7 @@ impl PieceDownload {
 			})
 			.collect::<Vec<_>>();
 
-		log::debug!("PieceDownload created with {} blocks", blocks.len());
+		debug!("PieceDownload created with {} blocks", blocks.len());
 
 		PieceDownload {
 			blocks,
@@ -60,10 +62,12 @@ impl PieceDownload {
 	}
 
 	pub fn pending_blocks(&self) -> impl Iterator<Item = (BlockId, &Block)> {
-		self.blocks().enumerate().filter(|(block_id, _)| {
-			self.block_downloads
-				.binary_search_by_key(&block_id, |(block_id, _)| block_id)
-				.is_err()
+		self.blocks().enumerate().filter(|(block_id, block)| {
+			block.data.is_none()
+				&& self
+					.block_downloads
+					.binary_search_by_key(&block_id, |(block_id, _)| block_id)
+					.is_err()
 		})
 	}
 

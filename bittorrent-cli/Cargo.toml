@@ -13,4 +13,7 @@ bittorrent = { path = ".." }
 ctrlc = "3.2.3"
 flexi_logger = "0.24"
 log = { workspace = true }
+#tracing-subscriber = "0.3.16"
+#tracing-tracy = "0.10.2"
+#tracing = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

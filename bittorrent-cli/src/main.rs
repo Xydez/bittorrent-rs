@@ -9,6 +9,9 @@ use bittorrent::{
 	},
 	prelude::*
 };
+use log::{error, info, warn};
+//use tracing::{info, warn, error, instrument::WithSubscriber};
+//use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
 
 /// Download a torrent
 #[derive(FromArgs, Debug)]
@@ -40,21 +43,18 @@ async fn main() {
 	.start()
 	.unwrap();
 
+	/*
+	let subscriber = tracing_subscriber::registry()
+		.with(tracing_tracy::TracyLayer::new())
+		.with(tracing_subscriber::fmt::layer());
+
+	tracing::subscriber::set_global_default(subscriber).unwrap();
+	*/
+
 	let args: Args = argh::from_env();
 
 	let (session, mut rx) = Session::spawn();
 	let session = Arc::new(session);
-
-	/*
-	std::fs::create_dir_all(args.dir.clone()).unwrap();
-	FileStore::
-	let store = FileStore::from_meta_info(&args.dir, &meta_info).unwrap();
-
-
-
-	Torrent::new(meta_info, store)
-	Torrent::new_resumed(resume, resume_data)
-	*/
 
 	let resume_file = std::path::Path::new(&args.torrent).with_extension("resume");
 	let resume_data = (!args.skip_resume && resume_file.exists())
@@ -72,39 +72,6 @@ async fn main() {
 		}
 	};
 
-	/*
-	// Attempt to resume a previous instance
-	let torrent = match if args.skip_resume {
-		None
-	} else {
-		Some(std::fs::File::open(&resume_file).map(|file| {
-			Torrent::deserialize_from(file, |resume_data| {
-				FileStore::resume(&args.dir, resume_data).unwrap()
-			})
-		}))
-	} {
-		Some(Ok(Ok(value))) => {
-			log::info!(
-				"Resume data was loaded, {}/{} pieces done",
-				value.complete_pieces().count(),
-				value.pieces.len()
-			);
-			value
-		}
-		None | Some(Err(_)) | Some(Ok(Err(_))) => {
-			if !args.skip_resume {
-				log::info!("No resume data could be loaded");
-			}
-
-			let meta_info = MetaInfo::load(&args.torrent).unwrap();
-			std::fs::create_dir_all(args.dir.clone()).unwrap();
-			let store = FileStore::from_meta_info(&args.dir, &meta_info).unwrap();
-
-			Torrent::new(meta_info, store)
-		}
-	};
-	*/
-
 	// TODO: We can remove the need for async if we convert it to TorrentPtr in SessionHandle
 	let torrent_id = session.add_torrent(torrent).await;
 
@@ -113,10 +80,10 @@ async fn main() {
 		let resume_file = resume_file.clone();
 
 		ctrlc::set_handler(move || {
-			log::info!("CTRL+C pressed");
+			info!("CTRL+C pressed");
 
 			if !args.skip_resume {
-				log::info!("Writing resume data...");
+				info!("Writing resume data...");
 
 				let session = session.clone();
 
@@ -128,7 +95,7 @@ async fn main() {
 					std::fs::File::create(&resume_file).unwrap(),
 					&resume_data
 				) {
-					log::error!("Failed to write resume data: {}", util::error_chain(error));
+					error!("Failed to write resume data: {}", util::error_chain(error));
 				}
 			}
 
@@ -141,11 +108,11 @@ async fn main() {
 		let event = match rx.recv().await {
 			Ok(event) => event,
 			Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
-				log::warn!("Lagged {count} messaged behind");
+				warn!("Lagged {count} messaged behind");
 				continue;
 			}
 			Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-				log::info!("Receiver is closed, terminating loop");
+				info!("Receiver is closed, terminating loop");
 				break;
 			}
 		};
@@ -155,8 +122,7 @@ async fn main() {
 				let (pending, verifying, writing, done) = {
 					let torrent = session.torrent(torrent_id).await;
 
-					let (mut pending, mut verifying, mut writing, mut done) =
-						(0, 0, 0, 0);
+					let (mut pending, mut verifying, mut writing, mut done) = (0, 0, 0, 0);
 
 					for piece in torrent.lock().await.state().pieces.iter() {
 						match piece.state {
@@ -171,12 +137,9 @@ async fn main() {
 					(pending, verifying, writing, done)
 				};
 
-				log::info!(
+				info!(
 					"{:>4} PENDING -> {:>2} VERIFYING -> {:>2} WRITING -> {:>4} DONE",
-					pending,
-					verifying,
-					writing,
-					done,
+					pending, verifying, writing, done,
 				);
 			}
 			Event::TorrentEvent(_, TorrentEvent::Done) => session.shutdown(),
@@ -185,7 +148,7 @@ async fn main() {
 	}
 
 	if !args.skip_resume {
-		log::info!("Writing resume data...");
+		info!("Writing resume data...");
 		let resume_data = session.torrent(torrent_id).await.resume_data().await;
 
 		if let Err(error) = tokio::task::spawn_blocking(move || {
@@ -194,7 +157,7 @@ async fn main() {
 		.await
 		.unwrap()
 		{
-			log::error!("Failed to write resume data: {}", util::error_chain(error));
+			error!("Failed to write resume data: {}", util::error_chain(error));
 		}
 	}
 
