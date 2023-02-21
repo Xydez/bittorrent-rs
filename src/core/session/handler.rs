@@ -80,10 +80,16 @@ async fn handle_torrent_event(
 				let torrent = session.torrents[&torrent_id].torrent.clone();
 				let data = data.clone();
 
-				assert!(
-					torrent.lock().await.state().pieces[piece as usize].state
-						== piece::State::Pending
-				);
+				{
+					let state = torrent.lock().await.state().pieces[piece as usize].state;
+
+					if state != piece::State::Pending {
+						log::warn!(
+							"Piece {piece} downloaded with non-pending state (state = {state:?}"
+						);
+						return;
+					}
+				}
 
 				tokio::spawn(async move {
 					let _permit = semaphore.acquire_owned().await.unwrap();

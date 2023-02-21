@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, trace, warn};
 use tokio::sync::Mutex;
 
 use super::Peer;
@@ -65,16 +65,17 @@ async fn get_download(
 	let downloads_len = torrent.state().downloads.len();
 
 	// 3. Get the PieceDownload
-	let download = torrent
-		.state_mut()
-		.downloads
-		.entry(piece)
-		.or_insert_with(|| {
-			info!("[{pid}] Creating piece download (piece={piece}, downloads_len={downloads_len})");
+	let download =
+		torrent
+			.state_mut()
+			.downloads
+			.entry(piece)
+			.or_insert_with(|| {
+				debug!("[{pid}] Creating piece download (piece={piece}, downloads_len={downloads_len})");
 
-			Arc::new(Mutex::new(PieceDownload::new(config, piece_size)))
-		})
-		.clone();
+				Arc::new(Mutex::new(PieceDownload::new(config, piece_size)))
+			})
+			.clone();
 
 	current_download.replace((piece, download.clone()));
 

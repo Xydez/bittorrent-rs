@@ -11,7 +11,7 @@ use self::{
 	resume::{Resume, ResumeData},
 	task::{Command, CommandSender}
 };
-use super::{peer::Peer, statistics::Statistics, bitfield::Bitfield};
+use super::{bitfield::Bitfield, peer::Peer, statistics::Statistics};
 use crate::{
 	core::{
 		configuration::Configuration,
@@ -251,7 +251,9 @@ impl<'a> TorrentLock<'a> {
 	/// Creates a bitfoield from the torrent's current pieces
 	pub fn bitfield(&self) -> Bitfield {
 		Bitfield::from_bytes_length(
-			&self.state.pieces
+			&self
+				.state
+				.pieces
 				.chunks(8)
 				.map(|pieces| {
 					pieces.iter().enumerate().fold(0u8, |acc, (i, piece)| {
