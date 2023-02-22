@@ -59,7 +59,7 @@ pub enum PeerEvent {
 }
 
 /// Events for a piece of a torrent
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum PieceEvent {
 	/// Piece has been downloaded
 	Downloaded(Arc<Vec<u8>>),
@@ -69,6 +69,12 @@ pub enum PieceEvent {
 
 	/// Piece has been stored
 	Done
+}
+
+impl std::fmt::Debug for PieceEvent {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self)
+	}
 }
 
 impl std::fmt::Display for PieceEvent {

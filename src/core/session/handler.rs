@@ -51,8 +51,9 @@ async fn handle_torrent_event(
 			if let Some(data) = download_lock.data() {
 				// Remove the piece download because it is done
 				{
-					let mut lock = torrent.lock().await;
+					let mut lock = torrent.lock().await; // TODO: If we decide to not use arc mutex for piecedownload then we can remove this
 					lock.state_mut().downloads.remove(piece);
+
 					//lock.state_mut().pieces[*piece as usize].state = piece::State::Verifying;
 				}
 
@@ -100,11 +101,15 @@ async fn handle_torrent_event(
 					let intact = util::async_verify(data.clone(), &hash).await;
 
 					if intact {
-						tx.send(Event::TorrentEvent(
-							torrent.id,
-							TorrentEvent::PieceEvent(piece, PieceEvent::Verified(data))
-						))
-						.unwrap();
+						if tx
+							.send(Event::TorrentEvent(
+								torrent.id,
+								TorrentEvent::PieceEvent(piece, PieceEvent::Verified(data))
+							))
+							.is_err()
+						{
+							panic!("Failed to send TorrentEvent(")
+						}
 					} else {
 						torrent.lock().await.state_mut().pieces[piece as usize].state =
 							piece::State::Pending;
@@ -119,6 +124,8 @@ async fn handle_torrent_event(
 				let data = data.clone();
 				let torrent = session.torrents[&torrent_id].torrent.clone();
 				let piece = *piece;
+
+				if tx.is_closed() {}
 
 				assert!(
 					torrent.lock().await.state().pieces[piece as usize].state

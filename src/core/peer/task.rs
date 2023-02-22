@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use log::{debug, error, trace, warn};
+use log::{debug, error, info, trace, warn};
 use tokio::sync::Mutex;
 
 use super::Peer;
@@ -14,7 +14,7 @@ use crate::{
 			Error, Result
 		},
 		piece::PieceId,
-		piece_download::PieceDownload,
+		piece_download::{BlockId, PieceDownload},
 		session::{PeerPtr, TorrentPtr},
 		torrent::{TorrentLock, WorkerId},
 		util
@@ -34,6 +34,7 @@ pub struct State {
 }
 */
 
+/*
 async fn get_download(
 	torrent: &mut TorrentLock<'_>,
 	peer: &Peer,
@@ -81,6 +82,59 @@ async fn get_download(
 
 	Some((piece, download))
 }
+*/
+
+#[derive(Default)]
+struct PieceIterator {
+	current_piece: Option<(PieceId, Arc<Mutex<PieceDownload>>)>
+}
+
+impl PieceIterator {
+	pub async fn next<'a>(
+		&'a mut self,
+		torrent: &'a mut TorrentLock<'_>,
+		peer: &Peer,
+		pid: &str,
+		config: &Configuration
+	) -> Option<(Arc<Mutex<PieceDownload>>, PieceId, BlockId)> {
+		if let Some((piece, ref download)) = self.current_piece {
+			// TODO: Try with end-game
+			if let Some(block) = algorithm::select_block(&*download.lock().await, peer.id()) {
+				return Some((download.clone(), piece, block));
+			}
+		}
+
+		// 2. If we can't continue on the current download, select a new piece
+		let piece = algorithm::select_piece(torrent, peer, config)?;
+
+		let piece_size = util::piece_size(piece, &torrent.torrent.meta_info);
+
+		let downloads_len = torrent.state().downloads.len();
+
+		if torrent.state().downloads.contains_key(&piece) {
+			info!("[{pid}] Assisting with existing download (piece={piece}, downloads_len={downloads_len})");
+		}
+
+		// 3. Get the PieceDownload
+		let download = torrent
+			.state_mut()
+			.downloads
+			.entry(piece)
+			.or_insert_with(|| {
+				debug!("[{pid}] Creating piece download (piece={piece}, downloads_len={downloads_len})");
+
+				Arc::new(Mutex::new(PieceDownload::new(config, piece_size)))
+			});
+
+		self.current_piece = Some((piece, download.clone()));
+
+		if let Some(block) = algorithm::select_block(&*download.lock().await, peer.id()) {
+			return Some((download.clone(), piece, block));
+		}
+
+		None
+	}
+}
 
 pub async fn run(
 	config: Arc<Configuration>,
@@ -109,7 +163,8 @@ pub async fn run(
 	// True if no messages have been received from the peer yet
 	let mut first_message = true;
 
-	let mut current_download = None;
+	//let mut current_download = None;
+	let mut piece_iter = PieceIterator::default();
 
 	// Create a bitfield of our pieces
 	let bitfield = torrent.lock().await.bitfield();
@@ -142,6 +197,7 @@ pub async fn run(
 	loop {
 		let mut peer = peer.lock().await;
 		let last_message_sent = peer.last_message_sent();
+		let last_message_received = peer.last_message_received();
 
 		tokio::select! {
 			// Forward messages from message_send
@@ -184,8 +240,13 @@ pub async fn run(
 			_ = tokio::time::sleep_until(last_message_sent + config.alive_timeout) => {
 				peer.send(Message::KeepAlive).await?;
 			}
+			// Terminate dead connections
+			_ = tokio::time::sleep_until(last_message_received + config.alive_timeout) => {
+				break Err(Error::Timeout);
+			}
 			// If downloading is enabled, we are unchoked and there are blocks available, download them
 			permit = block_semaphore.clone().acquire_owned(), if !peer.peer_choking() && mode_rx.borrow().download && !out_of_blocks => {
+				/*
 				let Some((piece, download)) = get_download(&mut torrent.lock().await, &peer, &pid, &config, &mut current_download).await else {
 					debug!("[{pid}] No pieces to download");
 					out_of_blocks = true;
@@ -199,10 +260,20 @@ pub async fn run(
 					out_of_blocks = true;
 					continue;
 				};
+				*/
 
-				download.block_downloads.push_back((block, peer.id()));
+				let mut torrent_lock = torrent.lock().await;
+				let Some((download, piece, block)) = piece_iter.next(&mut torrent_lock, &peer, &pid, &config).await else {
+					debug!("[{pid}] Nothing to download");
+					out_of_blocks = true;
+					continue;
+				};
 
-				let (block_begin, block_size) = (download.blocks[block].begin, download.blocks[block].size);
+				let mut download_lock = download.lock().await;
+
+				download_lock.block_downloads.push_back((block, peer.id()));
+
+				let (block_begin, block_size) = (download_lock.blocks[block].begin, download_lock.blocks[block].size);
 
 				trace!("[{pid}] Starting block worker for block {}", util::fmt_block(piece, block));
 				block_tasks.spawn(
@@ -230,15 +301,16 @@ pub async fn run(
 					continue;
 				};
 
+
 				match result.unwrap() {
 					Ok(data) => {
-						let mut lock = download.lock().await;
+						let mut download_lock = download.lock().await;
 
-						if lock.blocks[block].data.is_none() {
-							lock.blocks[block].data = Some(data.into());
+						if download_lock.blocks[block].data.is_none() {
+							download_lock.blocks[block].data = Some(data.into());
 
-							let blocks_total = lock.blocks().count();
-							let blocks_done = lock.blocks().filter(|block| block.data.is_some()).count();
+							let blocks_total = download_lock.blocks().count();
+							let blocks_done = download_lock.blocks().filter(|block| block.data.is_some()).count();
 
 							//let block_begin = lock.blocks[block].begin;
 							//let block_size = lock.blocks[block].size;

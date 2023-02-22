@@ -25,7 +25,7 @@ use crate::core::{
 /// 3. Download pieces sorted by descending priority, then ascending availability, using a weighted probability distribution where `weight(x) = floor(256 / 2^x)`\*.
 ///
 /// \* In practice this means choosing a random piece of the 8 most rare pieces.
-pub async fn select_piece(
+pub fn select_piece(
 	torrent: &TorrentLock<'_>,
 	peer: &Peer,
 	config: &Configuration
@@ -92,8 +92,8 @@ pub async fn select_piece(
 /// 2. If no pending blocks are found, download the block with the least amount of workers currently working on it
 pub fn select_block(
 	download: &PieceDownload,
-	worker_id: WorkerId,
-	end_game: bool
+	worker_id: WorkerId
+	//end_game: bool
 ) -> Option<usize> {
 	download
 		.blocks
@@ -120,7 +120,7 @@ pub fn select_block(
 					.count()
 			)
 		})
-		.filter(|(_, worker_count)| end_game || *worker_count == 0)
+		//.filter(|(_, worker_count)| end_game || *worker_count == 0)
 		.collect::<Vec<_>>()
 		.tap_mut(|vec| {
 			vec.sort_unstable_by(

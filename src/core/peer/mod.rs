@@ -31,7 +31,7 @@ pub(crate) mod task;
 #[derive(Error, Debug)]
 pub enum Error {
 	#[error("Request timed out")]
-	Timeout(#[from] tokio::time::error::Elapsed),
+	Timeout,
 	#[error("An error occurred within the wire protocol.")]
 	WireError(#[from] wire::connection::Error),
 	#[error("The peer sent an illegal message: {0}")]
@@ -79,7 +79,10 @@ pub struct Peer {
 	peer_pieces: Option<Bitfield>,
 
 	/// When the last message was sent by the client; in order to track keep alive messages
-	last_message_sent: tokio::time::Instant
+	last_message_sent: tokio::time::Instant,
+
+	/// When the last message was received by the client; in order to terminate dead connections
+	last_message_received: tokio::time::Instant
 }
 
 impl Peer {
@@ -96,7 +99,9 @@ impl Peer {
 			peer_choking: true,
 			peer_interested: false,
 			peer_pieces: None,
-			last_message_sent: tokio::time::Instant::now()
+			// Last message sent & recieved are both now because initiating the connection counts
+			last_message_sent: tokio::time::Instant::now(),
+			last_message_received: tokio::time::Instant::now()
 		}
 	}
 
@@ -193,6 +198,10 @@ impl Peer {
 
 	pub fn last_message_sent(&self) -> tokio::time::Instant {
 		self.last_message_sent
+	}
+
+	pub fn last_message_received(&self) -> tokio::time::Instant {
+		self.last_message_received
 	}
 
 	pub fn has_piece(&self, i: PieceId) -> bool {

@@ -1,6 +1,8 @@
 # bittorrent-rs
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html), prioritizing simplicity, reliability and correctness.
 
+<a href="https://asciinema.org/a/jdS95P5xYdxzqgpENpesxGHev" target="_blank"><img src="https://asciinema.org/a/jdS95P5xYdxzqgpENpesxGHev.svg" /></a>
+
 ## Getting started
 1. Create a [`Session`](core::session::Session)
 2. Load the [`MetaInfo`](protocol::metainfo::MetaInfo) from a torrent file
@@ -24,6 +26,11 @@ async fn main() {
     // Will keep on running until shutdown is called on the session
     session.join().await;
 }
+```
+
+### Running the CLI
+```text
+$ cargo r --release -p bittorrent-cli -- --skip-resume "torrents/debian-11.6.0-amd64-DVD-1.iso.torrent"
 ```
 
 ## Information

@@ -1,6 +1,6 @@
 use std::{net::Ipv4Addr, sync::Arc};
 
-use log::{error, trace};
+use log::{debug, error, trace};
 use tokio::{
 	net::{TcpListener, TcpStream},
 	sync::Mutex
@@ -98,7 +98,7 @@ pub async fn run(
 		}
 	}
 
-	trace!("Session is shutting down");
+	debug!("Session is shutting down");
 	//self.shutdown().await;
 }
 
