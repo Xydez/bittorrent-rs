@@ -222,6 +222,10 @@ pub async fn run(
 					return Err(Error::IllegalMessage(message));
 				}
 
+				if block_tasks.is_empty() && matches!(message, Message::Choke) {
+					warn!("[{pid}] Choked during download. Terminating {} block tasks.", block_tasks.len());
+				}
+
 				if let Message::Have(_) | Message::Bitfield(_) = message {
 					// If we receive a have/bitfield message it means there is a new piece for us to download.
 					// TODO: Compare against our own bitfield to see if there are pieces to download
@@ -301,19 +305,22 @@ pub async fn run(
 					continue;
 				};
 
+				let mut download_lock = download.lock().await;
+
+				if let Some(i) = download_lock.block_downloads
+					.iter()
+					.position(|(block_id, worker_id)| *block_id == block && *worker_id == peer.id())
+				{
+					download_lock.block_downloads.swap_remove_back(i);
+				}
 
 				match result.unwrap() {
 					Ok(data) => {
-						let mut download_lock = download.lock().await;
-
 						if download_lock.blocks[block].data.is_none() {
 							download_lock.blocks[block].data = Some(data.into());
 
 							let blocks_total = download_lock.blocks().count();
 							let blocks_done = download_lock.blocks().filter(|block| block.data.is_some()).count();
-
-							//let block_begin = lock.blocks[block].begin;
-							//let block_size = lock.blocks[block].size;
 
 							trace!(
 								"[{pid}] Received block {} ({}/{} blocks)",
@@ -326,9 +333,7 @@ pub async fn run(
 							warn!("[{pid}] Received duplicate block {}", util::fmt_block(piece, block));
 						}
 					},
-					Err(block_worker::Error::Choked) => {
-						warn!("[{pid}] Choked during download");
-					},
+					Err(block_worker::Error::Choked) => (),
 					Err(err) => {
 						error!("[{pid}] get_blocked errored: {}", util::error_chain(err));
 					}

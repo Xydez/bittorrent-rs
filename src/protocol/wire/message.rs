@@ -179,10 +179,10 @@ impl std::fmt::Display for Message {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Message::KeepAlive => write!(f, "KeepAlive"),
-			Message::Choke => write!(f, "KeepAlive"),
-			Message::Unchoke => write!(f, "KeepAlive"),
-			Message::Interested => write!(f, "KeepAlive"),
-			Message::NotInterested => write!(f, "KeepAlive"),
+			Message::Choke => write!(f, "Choke"),
+			Message::Unchoke => write!(f, "Unchoke"),
+			Message::Interested => write!(f, "Interested"),
+			Message::NotInterested => write!(f, "NotInterested"),
 			Message::Have(i) => write!(f, "Have({i})"),
 			Message::Bitfield(bitfield) => write!(f, "Bitfield(<{} elements>)", bitfield.len()),
 			Message::Request(index, begin, length) => {

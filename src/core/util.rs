@@ -98,6 +98,21 @@ pub fn set_bit(bytes: &mut [u8], i: usize, value: bool) {
 	}
 }
 
+pub fn fmt_duration(duration: std::time::Duration) -> String {
+	let duration = duration.as_secs_f64();
+	let mut str = String::new();
+
+	let minutes = duration.div_euclid(60.0);
+	let seconds = duration.rem_euclid(60.0);
+
+	if minutes > 0.0 {
+		str.push_str(&format!("{} m ", minutes.to_string()));
+	}
+
+	str.push_str(&format!("{:.1} s", seconds));
+	str
+}
+
 /// Stanardized formatting to describe a block within a piece
 pub fn fmt_block(piece: crate::core::piece::PieceId, block: usize) -> String {
 	format!("{piece}:{block}")

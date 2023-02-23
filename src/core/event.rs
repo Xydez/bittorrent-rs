@@ -34,7 +34,7 @@ pub enum Event {
 #[derive(Debug, Clone)]
 pub enum TorrentEvent {
 	/// Torrent added to the session
-	Added,
+	Added, // TODO: Rename to started?
 	/// Torrent has finished downloading
 	Done,
 	/// Torrent has been announced to the tracker
