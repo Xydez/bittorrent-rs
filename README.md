@@ -1,6 +1,8 @@
 # bittorrent-rs
 bittorrent-rs is a lightweight implementation of the bittorrent v1 protocol as described in the [BitTorrent Protocol Specification](https://www.bittorrent.org/beps/bep_0003.html), prioritizing simplicity, reliability and correctness.
 
+Video demo: https://youtu.be/juIuYxvuWWg
+
 <a href="https://asciinema.org/a/jdS95P5xYdxzqgpENpesxGHev" target="_blank"><img src="https://asciinema.org/a/jdS95P5xYdxzqgpENpesxGHev.svg" /></a>
 
 ## Getting started
