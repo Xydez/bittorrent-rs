@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, collections::HashMap};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use argh::FromArgs;
 use bittorrent::{
@@ -147,15 +147,16 @@ async fn main() {
 			Event::TorrentEvent(id, TorrentEvent::Added) => {
 				downloading_torrents.insert(id, std::time::Instant::now());
 				log::info!("Torrent {id} ADDED");
-			},
+			}
 			Event::TorrentEvent(id, TorrentEvent::Done) => {
-				let duration = std::time::Instant::now() - downloading_torrents.remove(&id).unwrap();
+				let duration =
+					std::time::Instant::now() - downloading_torrents.remove(&id).unwrap();
 				log::info!("Torrent {id} DONE (in {})", util::fmt_duration(duration));
 
 				if downloading_torrents.is_empty() {
 					session.shutdown();
 				}
-			},
+			}
 			_ => ()
 		}
 	}

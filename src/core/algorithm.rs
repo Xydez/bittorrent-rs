@@ -92,8 +92,7 @@ pub fn select_piece(
 /// 2. If no pending blocks are found, download the block with the least amount of workers currently working on it
 pub fn select_block(
 	download: &PieceDownload,
-	worker_id: WorkerId
-	//end_game: bool
+	worker_id: WorkerId //end_game: bool
 ) -> Option<usize> {
 	download
 		.blocks

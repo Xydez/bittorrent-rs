@@ -106,7 +106,7 @@ pub fn fmt_duration(duration: std::time::Duration) -> String {
 	let seconds = duration.rem_euclid(60.0);
 
 	if minutes > 0.0 {
-		str.push_str(&format!("{} m ", minutes.to_string()));
+		str.push_str(&format!("{} m ", minutes));
 	}
 
 	str.push_str(&format!("{:.1} s", seconds));
