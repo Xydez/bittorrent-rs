@@ -1,5 +1,4 @@
-pub use crate::{
-	core::{session::Session, torrent::Torrent},
-	io::store::{FileStore, MemoryStore, NullStore},
-	protocol::metainfo::MetaInfo
-};
+pub use io::store::{FileStore, MemoryStore, NullStore};
+pub use protocol::metainfo::MetaInfo;
+
+pub use crate::{session::Session, torrent::Torrent};

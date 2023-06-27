@@ -2,10 +2,10 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use argh::FromArgs;
 use bittorrent::{
+	common::util,
 	core::{
 		event::{Event, PieceEvent, TorrentEvent},
-		piece::State,
-		util
+		piece::State
 	},
 	prelude::*
 };

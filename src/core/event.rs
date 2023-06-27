@@ -5,13 +5,9 @@
 
 use std::sync::Arc;
 
-use crate::{
-	core::{
-		piece::PieceId,
-		torrent::{TorrentId, WorkerId}
-	},
-	protocol::tracker
-};
+use protocol::tracker;
+
+use crate::torrent::{TorrentId, WorkerId};
 
 pub type Sender<T> = tokio::sync::mpsc::UnboundedSender<T>;
 pub type Receiver<T> = tokio::sync::mpsc::UnboundedReceiver<T>;
@@ -42,16 +38,16 @@ pub enum TorrentEvent {
 	/// Event for a peer in the torrent
 	PeerEvent(WorkerId, PeerEvent),
 	/// Event for a piece in the torrent
-	PieceEvent(PieceId, PieceEvent)
+	PieceEvent(u32, PieceEvent)
 }
 
 /// Events for a peer
 #[derive(Debug, Clone)]
 pub enum PeerEvent {
 	/// Block of a piece has been received
-	BlockReceived(PieceId, usize),
+	BlockReceived(u32, u32),
 	/// Block of a piece has been sent
-	BlockSent(PieceId, usize),
+	BlockSent(u32, u32),
 	/// The peer is interested
 	Interested,
 	/// The peer is not interested

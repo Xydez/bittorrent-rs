@@ -1,6 +1,11 @@
 use std::{net::Ipv4Addr, sync::Arc};
 
+use common::util;
 use log::{debug, error, trace};
+use protocol::wire::{
+	self,
+	connection::{Handshake, Wire}
+};
 use tokio::{
 	net::{TcpListener, TcpStream},
 	sync::Mutex
@@ -8,17 +13,10 @@ use tokio::{
 
 use super::{EventReceiver, Session};
 use crate::{
-	core::{
-		event::Event,
-		peer::Peer,
-		session::handler,
-		torrent::{Torrent, TorrentHandle, TorrentId},
-		util
-	},
-	protocol::wire::{
-		self,
-		connection::{Handshake, Wire}
-	}
+	core::event::Event,
+	peer::Peer,
+	session::handler,
+	torrent::{Torrent, TorrentHandle, TorrentId}
 };
 
 #[derive(Debug)]
@@ -127,7 +125,8 @@ async fn handle_connection(
 
 	wire.send_handshake(&Handshake::new(
 		torrent_handle.torrent.meta_info.info_hash,
-		&session.config
+		session.config.peer_id,
+		session.config.extensions
 	))
 	.await?;
 

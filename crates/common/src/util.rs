@@ -1,4 +1,6 @@
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+use thiserror::Error;
+
+#[derive(Error, Debug, PartialEq, Eq)]
 pub struct ParseError;
 
 impl std::fmt::Display for ParseError {
@@ -10,9 +12,8 @@ impl std::fmt::Display for ParseError {
 /// Print a slice of [`u8`] as a hexadecimal string
 ///
 /// ```rust
-/// use bittorrent::core::util::hex;
-///
-/// assert_eq!(hex(&[0x1a, 0x2b, 0x3c]), "1a2b3c".to_string())
+/// # use common::util;
+/// assert_eq!(util::hex(&[0x1a, 0x2b, 0x3c]), "1a2b3c".to_string())
 /// ```
 pub fn hex(bytes: &[u8]) -> String {
 	let mut out = String::with_capacity(bytes.len() * 3 - 1);
@@ -27,11 +28,10 @@ pub fn hex(bytes: &[u8]) -> String {
 /// Parse a string of hexadecimal characters with length mod 2 into a vec of [`u8`]
 ///
 /// ```rust
-/// use bittorrent::core::util::parse_hex;
-///
-/// assert_eq!(parse_hex("1a2b3c"), Ok(vec![0x1a, 0x2b, 0x3c]));
-/// assert!(parse_hex("ghijkl").is_err()); // Contains non-hexadecimal characters
-/// assert!(parse_hex("12345").is_err()); // Length of 5 is not mod 2
+/// # use common::util;
+/// assert_eq!(util::parse_hex("1a2b3c"), Ok(vec![0x1a, 0x2b, 0x3c]));
+/// assert!(util::parse_hex("ghijkl").is_err()); // Contains non-hexadecimal characters
+/// assert!(util::parse_hex("12345").is_err()); // Length of 5 is not mod 2
 /// ```
 pub fn parse_hex(str: &str) -> Result<Vec<u8>, ParseError> {
 	let mut nums = Vec::new();
@@ -114,42 +114,8 @@ pub fn fmt_duration(duration: std::time::Duration) -> String {
 }
 
 /// Stanardized formatting to describe a block within a piece
-pub fn fmt_block(piece: crate::core::piece::PieceId, block: usize) -> String {
+pub fn fmt_block(piece: u32, block: u32) -> String {
 	format!("{piece}:{block}")
-}
-
-/// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
-pub async fn async_verify(piece: std::sync::Arc<Vec<u8>>, hash: &[u8; 20]) -> bool {
-	// Use spawn_blocking because it is a CPU bound task
-	hash == &tokio::task::spawn_blocking(move || {
-		<[u8; 20]>::try_from(<sha1::Sha1 as sha1::Digest>::digest(&*piece).as_slice()).unwrap()
-	})
-	.await
-	.unwrap()
-}
-
-/// Calculates the size of a piece using the [`MetaInfo`]
-pub fn piece_size(
-	piece: crate::core::piece::PieceId,
-	meta_info: &crate::protocol::metainfo::MetaInfo
-) -> usize {
-	if piece as usize == meta_info.pieces.len() - 1 {
-		meta_info.last_piece_size
-	} else {
-		meta_info.piece_size
-	}
-}
-
-pub fn block_size(
-	piece: crate::core::piece::PieceId,
-	block: crate::core::piece_download::BlockId,
-	meta_info: &crate::protocol::metainfo::MetaInfo,
-	config: &crate::core::configuration::Configuration
-) -> usize {
-	let piece_size = piece_size(piece, meta_info);
-	let bytes_to_end = piece_size - block * config.block_size;
-
-	config.block_size.min(bytes_to_end)
 }
 
 #[cfg(test)]

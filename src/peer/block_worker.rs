@@ -1,9 +1,8 @@
 //! A block worker is responsible for downloading a block from a peer
 
 use log::trace;
+use protocol::wire::message::Message;
 use thiserror::Error;
-
-use crate::{core::piece::PieceId, protocol::wire::message::Message};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -20,7 +19,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub async fn get_block(
 	pid: String,
 	_permit: tokio::sync::OwnedSemaphorePermit,
-	piece: PieceId,
+	piece: u32,
 	(block_begin, block_size): (u32, u32),
 	message_tx: tokio::sync::mpsc::Sender<Message>,
 	mut message_rx: tokio::sync::broadcast::Receiver<Message>

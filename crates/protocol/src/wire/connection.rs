@@ -7,13 +7,8 @@ use tokio::{
 	net::TcpStream
 };
 
-use crate::{
-	core::configuration::Configuration,
-	protocol::{
-		extensions::Extensions,
-		wire::message::{self, Message}
-	}
-};
+use super::message::{self, Message};
+use crate::extensions::Extensions;
 
 const PROTOCOL: &[u8] = b"BitTorrent protocol";
 
@@ -37,11 +32,11 @@ pub struct Handshake {
 }
 
 impl Handshake {
-	pub fn new(info_hash: [u8; 20], config: &Configuration) -> Handshake {
+	pub fn new(info_hash: [u8; 20], peer_id: [u8; 20], extensions: Extensions) -> Handshake {
 		Handshake {
-			extensions: config.extensions,
+			extensions,
 			info_hash,
-			peer_id: config.peer_id
+			peer_id
 		}
 	}
 }

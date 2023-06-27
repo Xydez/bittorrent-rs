@@ -7,26 +7,27 @@
 //! # Examples
 //!
 //! ```rust,no_run
-//! use bittorrent::protocol::tracker::{Announce, Event, Tracker};
+//! # use protocol::tracker::{Announce, Event, Tracker};
+//! #
+//! # #[tokio::main(flavor = "current_thread")]
+//! # async fn main() {
+//! let mut tracker = Tracker::new("https://example-tracker.com/announce");
 //!
-//! #[tokio::main(flavor = "current_thread")]
-//! async fn main() {
-//!     let mut tracker = Tracker::new("https://example-tracker.com/announce");
-//!     let announce = Announce {
-//!         info_hash: [0; 20], // In reality, this MUST be a valid info hash
-//!         peer_id: [b'x'; 20],
-//!         ip: None,
-//!         port: 8000,
-//!         uploaded: 0,
-//!         downloaded: 0,
-//!         left: 0,
-//!         event: Some(Event::Started)
-//!     };
+//! let announce = Announce {
+//!     info_hash: [0; 20], // In reality, this MUST be a valid info hash
+//!     peer_id: [b'x'; 20],
+//!     ip: None,
+//!     port: 8000,
+//!     uploaded: 0,
+//!     downloaded: 0,
+//!     left: 0,
+//!     event: Some(Event::Started)
+//! };
 //!
-//!     let response = tracker.announce(&announce).await;
+//! let response = tracker.announce(&announce).await;
 //!
-//!     println!("{:#?}", response);
-//! }
+//! println!("{:#?}", response);
+//! # }
 //! ```
 
 use std::{
@@ -254,7 +255,7 @@ mod tests {
 	use super::*;
 
 	#[tokio::test]
-	#[cfg_attr(not(feature = "net-tests"), ignore)]
+	#[ignore = "uses network"]
 	async fn test_announce() {
 		let mut tracker = Tracker::new("http://bttracker.debian.org:6969/announce");
 

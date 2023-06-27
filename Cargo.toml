@@ -1,56 +1,57 @@
 [workspace]
 members = [
-	"bittorrent-cli"
+	"bittorrent-cli",
+	"crates/common",
+	"crates/io",
+	"crates/protocol"
 ]
 
 [workspace.package]
 edition = "2021"
+version = "0.1.0"
 authors = ["Johannes <thexydez@gmail.com>"]
 license = "Unlicense"
 
 [workspace.dependencies]
 log = "0.4"
 tokio = "1"
+#tracing = "0.1"
+thiserror = "1"
+pretty_assertions = "1"
+rand = "0.8"
+serde = "1"
+sha1 = "0.10"
 
 [package]
 name = "bittorrent"
-version = "0.1.0"
 description = "lightweight implementation of the bittorrent v1 protocol"
 repository = "https://github.com/Xydez/bittorrent-rs"
 keywords = ["bittorrent", "torrent", "p2p", "networking"]
 categories = ["network-programming"]
-edition = { workspace = true }
-authors = { workspace = true }
-license = { workspace = true }
 
-[features]
-default = ["resume"]
-io-tests = []
-net-tests = []
-resume = []
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 
 [dependencies]
 # Crate dependencies
-bytes = "1"
-lazy_static = "1"
-paste = "1"
-percent-encoding = "2"
-rand = "0.8"
-reqwest = "0.11"
-serde = { version = "1", features = ["derive"] }
-serde_bencode = "0.2"
-serde_bytes = "0.11"
-serde_json = "1"
-sha1 = "0.10"
 tap = "1"
-thiserror = "1"
 tokio-util = { version = "0.7", features = ["rt"] }
-futures = "0.3"
 
 # Workspace dependencies
-log = { workspace = true }
-#tracing = { workspace = true }
+log.workspace = true
 tokio = { workspace = true, features = ["macros"] }
+#tracing.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+serde = { workspace = true, features = ["derive"] }
+sha1.workspace = true
+
+# Local dependencies
+common.path = "crates/common"
+io = { path = "crates/io", features = ["resume"] }
+protocol.path = "crates/protocol"
 
 [dev-dependencies]
-pretty_assertions = "1"
+pretty_assertions.workspace = true

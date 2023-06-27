@@ -1,6 +1,5 @@
+use common::util;
 use paste::paste;
-
-use crate::core::util;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NegotiationProtocol {
@@ -36,12 +35,12 @@ macro_rules! gen_accessors {
 		paste! {
 			#[doc = concat!("Get the value of the bit for ", $long_name, "\n\nReserved bit: ", $i)]
 			pub fn [<get_ $name>](&self) -> bool {
-				util::get_bit(&self.0, $i)
+				::common::util::get_bit(&self.0, $i)
 			}
 
 			#[doc = concat!("Set the value of the bit for ", $long_name, "\n\nReserved bit: ", $i)]
 			pub fn [<set_ $name>](&mut self, value: bool) {
-				util::set_bit(&mut self.0, $i, value);
+				::common::util::set_bit(&mut self.0, $i, value);
 			}
 		}
 	};

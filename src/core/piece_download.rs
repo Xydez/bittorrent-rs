@@ -2,10 +2,7 @@ use std::{collections::VecDeque, sync::Arc};
 
 use log::debug;
 
-use super::torrent::WorkerId;
-use crate::core::configuration::Configuration;
-
-pub type BlockId = usize;
+use crate::{core::configuration::Configuration, torrent::WorkerId};
 
 #[derive(Debug, Clone)]
 pub struct Block {
@@ -20,7 +17,7 @@ pub struct Block {
 #[derive(Debug, Clone)]
 pub struct PieceDownload {
 	/// Queue of (WorkerId, BlockId)
-	pub block_downloads: VecDeque<(BlockId, WorkerId)>,
+	pub block_downloads: VecDeque<(u32, WorkerId)>,
 	/// Status of the download
 	pub blocks: Vec<Block>
 }
@@ -61,14 +58,17 @@ impl PieceDownload {
 		self.blocks.iter()
 	}
 
-	pub fn pending_blocks(&self) -> impl Iterator<Item = (BlockId, &Block)> {
-		self.blocks().enumerate().filter(|(block_id, block)| {
-			block.data.is_none()
-				&& self
-					.block_downloads
-					.binary_search_by_key(&block_id, |(block_id, _)| block_id)
-					.is_err()
-		})
+	pub fn pending_blocks(&self) -> impl Iterator<Item = (u32, &Block)> {
+		self.blocks()
+			.enumerate()
+			.map(|(block_id, block)| (block_id as u32, block))
+			.filter(|(block_id, block)| {
+				block.data.is_none()
+					&& self
+						.block_downloads
+						.binary_search_by_key(&block_id, |(block_id, _)| block_id)
+						.is_err()
+			})
 	}
 
 	/// Returns true if all blocks of the piece download have a block state of [`BlockState::Done`]

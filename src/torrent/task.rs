@@ -44,7 +44,12 @@ use std::{
 	sync::Arc
 };
 
+use common::util;
 use log::{error, info, trace, warn};
+use protocol::{
+	tracker::{self, Announce, Response, Tracker},
+	wire::connection::{Handshake, Wire}
+};
 use rand::Rng;
 use thiserror::Error;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -53,16 +58,11 @@ use tokio_util::task::JoinMap;
 use crate::{
 	core::{
 		configuration::Configuration,
-		event::{Event, PeerEvent, TorrentEvent},
-		peer::{self, Peer, PeerHandle},
-		session::{EventSender, TorrentPtr},
-		torrent::WorkerId,
-		util
+		event::{Event, PeerEvent, TorrentEvent}
 	},
-	protocol::{
-		tracker::{self, Announce, Response, Tracker},
-		wire::connection::{Handshake, Wire}
-	}
+	peer::{self, Peer, PeerHandle},
+	session::{EventSender, TorrentPtr},
+	torrent::WorkerId
 };
 
 #[derive(Error, Debug)]
@@ -175,7 +175,11 @@ pub async fn run(
 				match Wire::connect(address).await {
 					Ok(mut wire) => {
 						if let Err(error) = wire
-							.send_handshake(&Handshake::new(info_hash, &config))
+							.send_handshake(&Handshake::new(
+								info_hash,
+								config.peer_id,
+								config.extensions
+							))
 							.await
 						{
 							error!(
@@ -333,18 +337,16 @@ pub async fn run(
 				let (worker_id, event) = event.unwrap();
 
 				match event {
-					PeerEvent::BlockReceived(piece_id, block) => {
+					PeerEvent::BlockReceived(piece_id, block) | PeerEvent::BlockSent(piece_id, block) => {
 						let mut torrent = torrent.lock().await;
-						let size = util::block_size(piece_id, block, &torrent.torrent.meta_info, &config);
+						let size = torrent.torrent.meta_info.size_of_block(piece_id, block, config.block_size);
 
-						torrent.state.stats.download(size);
+						match event {
+							PeerEvent::BlockReceived(_, _) => torrent.state.stats.download(size),
+							PeerEvent::BlockSent(_, _) => torrent.state.stats.upload(size),
+							_ => unreachable!()
+						}
 					}
-					PeerEvent::BlockSent(piece_id, block) => {
-						let mut torrent = torrent.lock().await;
-						let size = util::block_size(piece_id, block, &torrent.torrent.meta_info, &config);
-
-						torrent.state.stats.upload(size);
-					},
 					_ => () // PeerEvent::Interested and PeerEvent::NotInterested
 				}
 

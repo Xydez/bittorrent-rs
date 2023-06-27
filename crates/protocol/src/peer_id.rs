@@ -1,7 +1,6 @@
+use common::util;
 use lazy_static::lazy_static;
 use thiserror::Error;
-
-use crate::core::util;
 
 lazy_static! {
 	/// List of parseable clients
@@ -297,10 +296,10 @@ struct Client {
 /// https://github.com/webtorrent/bittorrent-peerid/blob/master/test/basic.js
 #[cfg(test)]
 mod tests {
+	use common::util;
 	use pretty_assertions::assert_eq;
 
 	use super::*;
-	use crate::core::util;
 
 	#[test]
 	fn test_azureus() {

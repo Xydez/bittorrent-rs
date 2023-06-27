@@ -1,0 +1,16 @@
+[package]
+name = "common"
+edition.workspace = true
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Crate dependencies
+# Workspace dependencies
+thiserror.workspace = true
+
+# Local dependencies
+
+[dev-dependencies]
+pretty_assertions.workspace = true

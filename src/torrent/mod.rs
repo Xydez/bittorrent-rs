@@ -4,38 +4,29 @@ use std::{
 	sync::{atomic::AtomicU32, Arc}
 };
 
-use thiserror::Error;
+use common::util;
+use io::{
+	resume::{Resume, ResumeData},
+	store::Store
+};
+use protocol::{metainfo::MetaInfo, tracker::Tracker};
 use tokio::sync::{Mutex, MutexGuard, OwnedSemaphorePermit};
 
-use self::{
-	resume::{Resume, ResumeData},
-	task::{Command, CommandSender}
-};
-use super::{bitfield::Bitfield, peer::Peer, statistics::Statistics};
+use self::task::{Command, CommandSender};
+use super::peer::Peer;
 use crate::{
 	core::{
+		bitfield::Bitfield,
 		configuration::Configuration,
-		piece::{self, Piece, PieceId, Priority, State},
+		piece::{self, Piece, Priority, State},
 		piece_download::PieceDownload,
-		session::{EventSender, TorrentPtr},
-		util
+		statistics::Statistics
 	},
-	io::store::Store,
-	protocol::{metainfo::MetaInfo, tracker::Tracker}
+	session::{EventSender, TorrentPtr}
 };
 
-pub mod resume;
+//mod peer_set;
 mod task;
-
-#[derive(Error, Debug)]
-pub enum ResumeError {
-	#[error("An error occurred while reading or writing data")]
-	IOError(#[from] std::io::Error),
-	#[error("The checksum of the provided store does not match the deserialized store")]
-	InvalidChecksum,
-	#[error(transparent)]
-	Other(#[from] Box<dyn std::error::Error>)
-}
 
 /// Atomic counter used to generate torrent identifiers
 static TORRENT_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -105,8 +96,11 @@ pub struct TorrentState {
 	/// List of all pieces
 	pub pieces: Vec<Piece>,
 	/// Map of piece id to download
-	pub downloads: HashMap<PieceId, Arc<Mutex<PieceDownload>>>,
+	pub downloads: HashMap<u32, Arc<Mutex<PieceDownload>>>,
+	// /// The torrent's current peer set
+	// pub peers: HashMap<>
 	// TODO: Implement multiple trackers
+	/// The tracker for the torrent
 	pub tracker: Tracker,
 	/// Statistics for the torrent
 	pub stats: Statistics
@@ -138,7 +132,7 @@ impl Torrent {
 		Ok(Self::new_impl(meta_info, store, pieces))
 	}
 
-	pub fn new_impl(meta_info: MetaInfo, store: Box<dyn Store>, pieces: Vec<Piece>) -> Self {
+	fn new_impl(meta_info: MetaInfo, store: Box<dyn Store>, pieces: Vec<Piece>) -> Self {
 		let id = TorrentId::gen();
 		let tracker = Tracker::new(&meta_info.announce);
 		let store = Mutex::new(store);
@@ -214,7 +208,7 @@ impl<'a> TorrentLock<'a> {
 
 	/// Returns an iterator of the torrent's [`Piece`]s and their respective
 	/// [`PieceId`]s
-	pub fn pieces(&self) -> impl Iterator<Item = (PieceId, &Piece)> {
+	pub fn pieces(&self) -> impl Iterator<Item = (u32, &Piece)> {
 		self.state
 			.pieces
 			.iter()
@@ -229,7 +223,7 @@ impl<'a> TorrentLock<'a> {
 			- self
 				.pieces()
 				.filter(|(_, piece)| piece.state >= State::Writing)
-				.map(|(piece_id, _)| util::piece_size(piece_id, &self.torrent.meta_info))
+				.map(|(piece_id, _)| self.torrent.meta_info.size_of_piece(piece_id))
 				.sum::<usize>()
 	}
 

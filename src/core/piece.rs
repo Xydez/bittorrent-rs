@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-pub type PieceId = u32;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Piece {
 	pub priority: Priority,

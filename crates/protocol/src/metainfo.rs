@@ -113,6 +113,21 @@ impl MetaInfo {
 
 		MetaInfo::try_from(buf.as_slice())
 	}
+
+	pub fn size_of_piece(&self, piece: u32) -> usize {
+		if piece as usize == self.pieces.len() - 1 {
+			self.last_piece_size
+		} else {
+			self.piece_size
+		}
+	}
+
+	pub fn size_of_block(&self, piece: u32, block: u32, block_size: usize) -> usize {
+		let piece_size = self.size_of_piece(piece);
+		let bytes_to_end = piece_size - block as usize * block_size;
+
+		block_size.min(bytes_to_end)
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

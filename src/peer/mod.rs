@@ -3,26 +3,27 @@ use std::{
 	sync::{atomic::AtomicU32, Arc}
 };
 
+use common::util;
+use protocol::{
+	extensions::Extensions,
+	peer_id::PeerId,
+	wire::{
+		self,
+		connection::{Handshake, Wire},
+		message::Message
+	}
+};
 use thiserror::Error;
 use tokio::sync::Mutex;
 
 use super::{
-	configuration::Configuration,
-	event::{PeerEvent, Sender},
 	session::{PeerPtr, TorrentPtr},
 	torrent::WorkerId
 };
-use crate::{
-	core::{bitfield::Bitfield, piece::PieceId, util},
-	protocol::{
-		extensions::Extensions,
-		peer_id::PeerId,
-		wire::{
-			self,
-			connection::{Handshake, Wire},
-			message::Message
-		}
-	}
+use crate::core::{
+	bitfield::Bitfield,
+	configuration::Configuration,
+	event::{PeerEvent, Sender}
 };
 
 mod block_worker;
@@ -204,11 +205,11 @@ impl Peer {
 		self.last_message_received
 	}
 
-	pub fn has_piece(&self, i: PieceId) -> bool {
+	pub fn has_piece(&self, piece: u32) -> bool {
 		// If we haven't received a bitfield, it means the peer has no pieces yet
 		self.peer_pieces
 			.as_ref()
-			.map(|v| v.get(i as usize))
+			.map(|v| v.get(piece as usize))
 			.unwrap_or(false)
 	}
 }

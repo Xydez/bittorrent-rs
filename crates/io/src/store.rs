@@ -5,13 +5,9 @@ use std::{
 	path::{Path, PathBuf}
 };
 
-use crate::{
-	core::torrent::{
-		resume::{Resume, ResumeData},
-		ResumeError
-	},
-	protocol::metainfo::MetaInfo
-};
+use protocol::metainfo::MetaInfo;
+
+use crate::resume::{Resume, ResumeData, ResumeError};
 
 type Error = Box<dyn std::error::Error>;
 
@@ -144,28 +140,6 @@ impl FileStore {
 		)
 	}
 
-	#[cfg(feature = "resume")]
-	pub fn resume(directory: impl AsRef<Path>) -> impl Resume<FileStore> {
-		FileStoreResume {
-			directory: directory.as_ref().to_path_buf()
-		}
-	}
-
-	#[cfg(feature = "resume")]
-	pub fn resume_old(
-		directory: impl AsRef<Path>,
-		resume_data: ResumeData
-	) -> Result<FileStore, crate::core::torrent::ResumeError> {
-		let mut store = Self::from_meta_info(directory, &resume_data.meta_info)?;
-		store.has_pieces = resume_data.pieces.clone();
-
-		if resume_data.checksum != store.checksum()? {
-			Err(ResumeError::InvalidChecksum)
-		} else {
-			Ok(store)
-		}
-	}
-
 	pub fn destroy(self) -> std::io::Result<()> {
 		for (_, path, _) in self.files {
 			std::fs::remove_file(self.directory.join(path))?;
@@ -205,6 +179,29 @@ impl FileStore {
 		let end = begin + length;
 
 		(begin, end)
+	}
+}
+
+#[cfg(feature = "resume")]
+impl FileStore {
+	pub fn resume(directory: impl AsRef<Path>) -> impl Resume<FileStore> {
+		FileStoreResume {
+			directory: directory.as_ref().to_path_buf()
+		}
+	}
+
+	pub fn resume_old(
+		directory: impl AsRef<Path>,
+		resume_data: ResumeData
+	) -> Result<FileStore, ResumeError> {
+		let mut store = Self::from_meta_info(directory, &resume_data.meta_info)?;
+		store.has_pieces = resume_data.pieces.clone();
+
+		if resume_data.checksum != store.checksum()? {
+			Err(ResumeError::InvalidChecksum)
+		} else {
+			Ok(store)
+		}
 	}
 }
 
@@ -315,7 +312,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	#[cfg_attr(not(feature = "io-tests"), ignore)]
+	#[ignore = "uses io"]
 	fn single_file() {
 		let mut store = FileStore::new(".", 7, vec![(21, "test_single_file.txt".into())]).unwrap();
 
@@ -331,7 +328,7 @@ mod tests {
 	}
 
 	#[test]
-	#[cfg_attr(not(feature = "io-tests"), ignore)]
+	#[ignore = "uses io"]
 	fn single_file_last_piece() {
 		let mut store =
 			FileStore::new(".", 7, vec![(18, "test_single_file_last_piece.txt".into())]).unwrap();
@@ -352,7 +349,7 @@ mod tests {
 	}
 
 	#[test]
-	#[cfg_attr(not(feature = "io-tests"), ignore)]
+	#[ignore = "uses io"]
 	fn multi_file() {
 		let mut store = FileStore::new(
 			".",

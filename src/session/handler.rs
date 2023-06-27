@@ -2,14 +2,16 @@
 
 use std::sync::Arc;
 
+use common::util;
 use log::{debug, info, warn};
 
-use crate::core::{
-	event::{Event, PeerEvent, PieceEvent, TorrentEvent},
-	piece,
+use crate::{
+	core::{
+		event::{Event, PeerEvent, PieceEvent, TorrentEvent},
+		piece
+	},
 	session::Session,
-	torrent::TorrentId,
-	util
+	torrent::TorrentId
 };
 
 pub async fn handle(session: &mut Session, event: &Event) {
@@ -98,7 +100,7 @@ async fn handle_torrent_event(
 						piece::State::Verifying;
 
 					let hash = torrent.meta_info.pieces[piece as usize];
-					let intact = util::async_verify(data.clone(), &hash).await;
+					let intact = async_verify(data.clone(), &hash).await;
 
 					if intact {
 						if tx
@@ -177,4 +179,14 @@ async fn handle_torrent_event(
 		}
 		_ => ()
 	}
+}
+
+/// Computes the Sha1 hash of the piece and compares it to the specified hash, returning whether there is a match
+async fn async_verify(piece: std::sync::Arc<Vec<u8>>, hash: &[u8; 20]) -> bool {
+	// Use spawn_blocking because it is a CPU bound task
+	hash == &tokio::task::spawn_blocking(move || {
+		<[u8; 20]>::try_from(<sha1::Sha1 as sha1::Digest>::digest(&*piece).as_slice()).unwrap()
+	})
+	.await
+	.unwrap()
 }

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use common::util;
 use log::{debug, error, info, trace, warn};
+use protocol::wire::message::Message;
 use tokio::sync::Mutex;
 
 use super::Peer;
@@ -9,17 +11,14 @@ use crate::{
 		algorithm,
 		configuration::Configuration,
 		event::{PeerEvent, Sender},
-		peer::{
-			block_worker::{self, get_block},
-			Error, Result
-		},
-		piece::PieceId,
-		piece_download::{BlockId, PieceDownload},
-		session::{PeerPtr, TorrentPtr},
-		torrent::{TorrentLock, WorkerId},
-		util
+		piece_download::PieceDownload
 	},
-	protocol::wire::message::Message
+	peer::{
+		block_worker::{self, get_block},
+		Error, Result
+	},
+	session::{PeerPtr, TorrentPtr},
+	torrent::{TorrentLock, WorkerId}
 };
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
@@ -86,7 +85,7 @@ async fn get_download(
 
 #[derive(Default)]
 struct PieceIterator {
-	current_piece: Option<(PieceId, Arc<Mutex<PieceDownload>>)>
+	current_piece: Option<(u32, Arc<Mutex<PieceDownload>>)>
 }
 
 impl PieceIterator {
@@ -96,7 +95,7 @@ impl PieceIterator {
 		peer: &Peer,
 		pid: &str,
 		config: &Configuration
-	) -> Option<(Arc<Mutex<PieceDownload>>, PieceId, BlockId)> {
+	) -> Option<(Arc<Mutex<PieceDownload>>, u32, u32)> {
 		if let Some((piece, ref download)) = self.current_piece {
 			// TODO: Try with end-game
 			if let Some(block) = algorithm::select_block(&*download.lock().await, peer.id()) {
@@ -107,7 +106,7 @@ impl PieceIterator {
 		// 2. If we can't continue on the current download, select a new piece
 		let piece = algorithm::select_piece(torrent, peer, config)?;
 
-		let piece_size = util::piece_size(piece, &torrent.torrent.meta_info);
+		let piece_size = torrent.torrent.meta_info.size_of_piece(piece);
 
 		let downloads_len = torrent.state().downloads.len();
 
@@ -277,7 +276,7 @@ pub async fn run(
 
 				download_lock.block_downloads.push_back((block, peer.id()));
 
-				let (block_begin, block_size) = (download_lock.blocks[block].begin, download_lock.blocks[block].size);
+				let (block_begin, block_size) = (download_lock.blocks[block as usize].begin, download_lock.blocks[block as usize].size);
 
 				trace!("[{pid}] Starting block worker for block {}", util::fmt_block(piece, block));
 				block_tasks.spawn(
@@ -316,8 +315,8 @@ pub async fn run(
 
 				match result.unwrap() {
 					Ok(data) => {
-						if download_lock.blocks[block].data.is_none() {
-							download_lock.blocks[block].data = Some(data.into());
+						if download_lock.blocks[block as usize].data.is_none() {
+							download_lock.blocks[block as usize].data = Some(data.into());
 
 							let blocks_total = download_lock.blocks().count();
 							let blocks_done = download_lock.blocks().filter(|block| block.data.is_some()).count();

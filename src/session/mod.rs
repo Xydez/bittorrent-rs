@@ -4,11 +4,13 @@ use tokio::sync::{Mutex, Semaphore};
 
 use self::task::{Command, CommandSender};
 use super::torrent::TorrentHandle;
-use crate::core::{
-	configuration::Configuration,
-	event::{Event, TorrentEvent},
+use crate::{
+	core::{
+		configuration::Configuration,
+		event::{Event, TorrentEvent},
+		piece_download::PieceDownload
+	},
 	peer::Peer,
-	piece_download::PieceDownload,
 	torrent::{Torrent, TorrentId}
 };
 

@@ -9,13 +9,12 @@ use tap::Tap;
 
 use super::{
 	configuration::Configuration,
-	piece::State,
-	piece_download::PieceDownload,
-	torrent::{TorrentLock, WorkerId}
+	piece::{Priority, State},
+	piece_download::PieceDownload
 };
-use crate::core::{
+use crate::{
 	peer::Peer,
-	piece::{PieceId, Priority}
+	torrent::{TorrentLock, WorkerId}
 };
 
 // TODO: In all honesty we really don't want async hhere..
@@ -25,11 +24,7 @@ use crate::core::{
 /// 3. Download pieces sorted by descending priority, then ascending availability, using a weighted probability distribution where `weight(x) = floor(256 / 2^x)`\*.
 ///
 /// \* In practice this means choosing a random piece of the 8 most rare pieces.
-pub fn select_piece(
-	torrent: &TorrentLock<'_>,
-	peer: &Peer,
-	config: &Configuration
-) -> Option<PieceId> {
+pub fn select_piece(torrent: &TorrentLock<'_>, peer: &Peer, config: &Configuration) -> Option<u32> {
 	// If there is any piece of priority Highest with state Pending, download it
 	if let Some(i) = torrent
 		.pieces()
@@ -93,7 +88,7 @@ pub fn select_piece(
 pub fn select_block(
 	download: &PieceDownload,
 	worker_id: WorkerId //end_game: bool
-) -> Option<usize> {
+) -> Option<u32> {
 	download
 		.blocks
 		.iter()
@@ -106,7 +101,7 @@ pub fn select_block(
 				.block_downloads
 				.iter()
 				.any(|(block_id, download_worker_id)| {
-					worker_id == *download_worker_id && block_id == i
+					worker_id == *download_worker_id && *block_id == *i as u32
 				})
 		})
 		.map(|(i, _)| {
@@ -115,7 +110,7 @@ pub fn select_block(
 				download
 					.block_downloads
 					.iter()
-					.filter(|(block_id, _)| *block_id == i)
+					.filter(|(block_id, _)| *block_id == i as u32)
 					.count()
 			)
 		})
@@ -131,5 +126,5 @@ pub fn select_block(
 			)
 		})
 		.first()
-		.map(|(i, _)| *i)
+		.map(|(i, _)| *i as u32)
 }

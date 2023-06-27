@@ -1,9 +1,8 @@
-use rand::Rng;
-
-use crate::protocol::{
+use protocol::{
 	extensions::Extensions,
 	peer_id::{PeerId, Version}
 };
+use rand::Rng;
 
 /// Configuration of the session
 #[derive(Debug)]
