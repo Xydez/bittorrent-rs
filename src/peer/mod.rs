@@ -1,6 +1,6 @@
 use std::{
 	future::Future,
-	sync::{atomic::AtomicU32, Arc}
+	sync::{atomic::AtomicU32, Arc},
 };
 
 use common::util;
@@ -10,20 +10,20 @@ use protocol::{
 	wire::{
 		self,
 		connection::{Handshake, Wire},
-		message::Message
-	}
+		message::Message,
+	},
 };
 use thiserror::Error;
 use tokio::sync::Mutex;
 
 use super::{
 	session::{PeerPtr, TorrentPtr},
-	torrent::WorkerId
+	torrent::WorkerId,
 };
 use crate::core::{
 	bitfield::Bitfield,
 	configuration::Configuration,
-	event::{PeerEvent, Sender}
+	event::{PeerEvent, Sender},
 };
 
 mod block_worker;
@@ -36,7 +36,7 @@ pub enum Error {
 	#[error("An error occurred within the wire protocol.")]
 	WireError(#[from] wire::connection::Error),
 	#[error("The peer sent an illegal message: {0}")]
-	IllegalMessage(Message)
+	IllegalMessage(Message),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -47,7 +47,7 @@ static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 #[derive(Debug)]
 pub struct PeerHandle {
 	data: PeerPtr,
-	pub(crate) _mode_tx: tokio::sync::watch::Sender<task::Mode> // TODO: Should be managed in torrent task
+	pub(crate) _mode_tx: tokio::sync::watch::Sender<task::Mode>, // TODO: Should be managed in torrent task
 }
 
 impl PeerHandle {
@@ -83,7 +83,7 @@ pub struct Peer {
 	last_message_sent: tokio::time::Instant,
 
 	/// When the last message was received by the client; in order to terminate dead connections
-	last_message_received: tokio::time::Instant
+	last_message_received: tokio::time::Instant,
 }
 
 impl Peer {
@@ -102,7 +102,7 @@ impl Peer {
 			peer_pieces: None,
 			// Last message sent & recieved are both now because initiating the connection counts
 			last_message_sent: tokio::time::Instant::now(),
-			last_message_received: tokio::time::Instant::now()
+			last_message_received: tokio::time::Instant::now(),
 		}
 	}
 
@@ -111,7 +111,7 @@ impl Peer {
 		mode: task::Mode,
 		torrent: TorrentPtr,
 		event_tx: Sender<(WorkerId, PeerEvent)>,
-		config: Arc<Configuration>
+		config: Arc<Configuration>,
 	) -> Result<(PeerHandle, impl Future<Output = Result<()>>)> {
 		let (mode_tx, mode_rx) = tokio::sync::watch::channel(mode);
 
@@ -123,7 +123,7 @@ impl Peer {
 
 		let handle = PeerHandle {
 			data,
-			_mode_tx: mode_tx
+			_mode_tx: mode_tx,
 		};
 
 		Ok((handle, fut))
@@ -138,7 +138,7 @@ impl Peer {
 			Message::Unchoke => self.am_choking = false,
 			Message::Interested => self.am_interested = true,
 			Message::NotInterested => self.am_interested = false,
-			_ => ()
+			_ => (),
 		};
 
 		Ok(self.wire.send(message).await?)
@@ -159,7 +159,7 @@ impl Peer {
 				peer_pieces |= &mut Bitfield::from_bytes_length(data, peer_pieces.len()).unwrap();
 			}
 			Message::Have(i) => self.peer_pieces.as_mut().unwrap().set(*i as usize, true),
-			_ => ()
+			_ => (),
 		};
 
 		Ok(message)

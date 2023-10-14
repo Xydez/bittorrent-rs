@@ -6,13 +6,13 @@ pub enum NegotiationProtocol {
 	/// LibTorrent Extension Protocol
 	LTEP,
 	/// Azureus Extended Messaging
-	AZMP
+	AZMP,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct ExtensionNegotiation {
 	force: bool,
-	protocol: NegotiationProtocol
+	protocol: NegotiationProtocol,
 }
 
 /// | Bit   | Use                                    |

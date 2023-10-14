@@ -23,7 +23,7 @@ pub enum Event {
 	/// Session is stopping
 	Stopped,
 	/// Event for a torrent in the session
-	TorrentEvent(TorrentId, TorrentEvent)
+	TorrentEvent(TorrentId, TorrentEvent),
 }
 
 /// Events for a torrent
@@ -38,7 +38,7 @@ pub enum TorrentEvent {
 	/// Event for a peer in the torrent
 	PeerEvent(WorkerId, PeerEvent),
 	/// Event for a piece in the torrent
-	PieceEvent(u32, PieceEvent)
+	PieceEvent(u32, PieceEvent),
 }
 
 /// Events for a peer
@@ -51,7 +51,7 @@ pub enum PeerEvent {
 	/// The peer is interested
 	Interested,
 	/// The peer is not interested
-	NotInterested
+	NotInterested,
 }
 
 /// Events for a piece of a torrent
@@ -64,7 +64,7 @@ pub enum PieceEvent {
 	Verified(Arc<Vec<u8>>), // TODO: Since the piece is in the store we might not need to include it here? Anyways just a useless thought
 
 	/// Piece has been stored
-	Done
+	Done,
 }
 
 impl std::fmt::Debug for PieceEvent {
@@ -78,7 +78,7 @@ impl std::fmt::Display for PieceEvent {
 		match self {
 			PieceEvent::Downloaded(data) => write!(f, "Downloaded({} bytes)", data.len()),
 			PieceEvent::Verified(data) => write!(f, "Verified({} bytes)", data.len()),
-			PieceEvent::Done => write!(f, "Done")
+			PieceEvent::Done => write!(f, "Done"),
 		}
 	}
 }
@@ -89,7 +89,7 @@ impl std::fmt::Display for PeerEvent {
 			PeerEvent::BlockReceived(piece, block) => write!(f, "BlockReceived({piece}:{block})"),
 			PeerEvent::BlockSent(piece, block) => write!(f, "BlockSent({piece}:{block})"),
 			PeerEvent::Interested => write!(f, "Interested"),
-			PeerEvent::NotInterested => write!(f, "NotInterested")
+			PeerEvent::NotInterested => write!(f, "NotInterested"),
 		}
 	}
 }
@@ -103,7 +103,7 @@ impl std::fmt::Display for TorrentEvent {
 				write!(f, "Announced({} peers)", response.peers_addrs.len())
 			}
 			TorrentEvent::PieceEvent(piece, event) => write!(f, "PieceEvent({piece}, {event})"),
-			TorrentEvent::PeerEvent(peer, event) => write!(f, "PeerEvent({peer}, {event})")
+			TorrentEvent::PeerEvent(peer, event) => write!(f, "PeerEvent({peer}, {event})"),
 		}
 	}
 }

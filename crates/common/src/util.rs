@@ -52,7 +52,7 @@ pub fn group_by_key<I, V, K, F>(elements: I, mut f: F) -> std::collections::BTre
 where
 	I: IntoIterator<Item = V>,
 	K: Eq + std::cmp::Ord,
-	F: FnMut(&V) -> K
+	F: FnMut(&V) -> K,
 {
 	let mut map: std::collections::BTreeMap<K, Vec<V>> = std::collections::BTreeMap::new();
 

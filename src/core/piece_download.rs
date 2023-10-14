@@ -11,7 +11,7 @@ pub struct Block {
 	/// Size of the block in bytes
 	pub size: u32,
 	/// Data of the block
-	pub data: Option<Arc<[u8]>>
+	pub data: Option<Arc<[u8]>>,
 }
 
 #[derive(Debug, Clone)]
@@ -19,7 +19,7 @@ pub struct PieceDownload {
 	/// Queue of (WorkerId, BlockId)
 	pub block_downloads: VecDeque<(u32, WorkerId)>,
 	/// Status of the download
-	pub blocks: Vec<Block>
+	pub blocks: Vec<Block>,
 }
 
 impl PieceDownload {
@@ -29,7 +29,7 @@ impl PieceDownload {
 			.map(|i| Block {
 				begin: i as u32,
 				size: (piece_size - i).min(config.block_size) as u32,
-				data: None
+				data: None,
 			})
 			.collect::<Vec<_>>();
 
@@ -37,7 +37,7 @@ impl PieceDownload {
 
 		PieceDownload {
 			blocks,
-			block_downloads: VecDeque::new()
+			block_downloads: VecDeque::new(),
 		}
 	}
 

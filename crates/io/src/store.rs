@@ -2,7 +2,7 @@ use std::{
 	fs::{File, OpenOptions},
 	hash::{Hash, Hasher},
 	io::{Read, Seek, Write},
-	path::{Path, PathBuf}
+	path::{Path, PathBuf},
 };
 
 use protocol::metainfo::MetaInfo;
@@ -38,14 +38,14 @@ impl Store for NullStore {
 
 #[derive(Debug)]
 pub struct MemoryStore {
-	data: Vec<Option<Vec<u8>>>
+	data: Vec<Option<Vec<u8>>>,
 }
 
 impl MemoryStore {
 	// TODO: use piece_size and last_piece_size to assert that the correct data size is used in set
 	pub fn new(pieces: usize, _piece_size: usize, _last_piece_size: usize) -> MemoryStore {
 		MemoryStore {
-			data: vec![None; pieces]
+			data: vec![None; pieces],
 		}
 	}
 }
@@ -78,7 +78,7 @@ pub struct FileStore {
 	pub(crate) directory: PathBuf,
 	/// Opened files within the store and path not including base directory
 	files: Vec<(usize, PathBuf, File)>,
-	pub(crate) has_pieces: Vec<bool>
+	pub(crate) has_pieces: Vec<bool>,
 }
 
 impl FileStore {
@@ -88,7 +88,7 @@ impl FileStore {
 	pub fn new(
 		directory: impl AsRef<Path>,
 		piece_size: usize,
-		files: impl IntoIterator<Item = (usize, PathBuf)>
+		files: impl IntoIterator<Item = (usize, PathBuf)>,
 	) -> std::io::Result<FileStore> {
 		let files = files
 			.into_iter()
@@ -102,7 +102,7 @@ impl FileStore {
 						.read(true)
 						.write(true)
 						.create(true)
-						.open(full_path)
+						.open(full_path),
 				)
 			})
 			.map(|(length, path, result)| result.map(|value| (length, path, value)))
@@ -121,14 +121,14 @@ impl FileStore {
 			piece_size,
 			directory: directory.as_ref().to_path_buf(),
 			files,
-			has_pieces
+			has_pieces,
 		})
 	}
 
 	/// Creates a file store in the given directory using the provided [`MetaInfo`]
 	pub fn from_meta_info(
 		directory: impl AsRef<Path>,
-		meta_info: &MetaInfo
+		meta_info: &MetaInfo,
 	) -> std::io::Result<FileStore> {
 		FileStore::new(
 			directory,
@@ -136,7 +136,7 @@ impl FileStore {
 			meta_info
 				.files
 				.iter()
-				.map(|file| (file.length, file.path.clone()))
+				.map(|file| (file.length, file.path.clone())),
 		)
 	}
 
@@ -186,13 +186,13 @@ impl FileStore {
 impl FileStore {
 	pub fn resume(directory: impl AsRef<Path>) -> impl Resume<FileStore> {
 		FileStoreResume {
-			directory: directory.as_ref().to_path_buf()
+			directory: directory.as_ref().to_path_buf(),
 		}
 	}
 
 	pub fn resume_old(
 		directory: impl AsRef<Path>,
-		resume_data: ResumeData
+		resume_data: ResumeData,
 	) -> Result<FileStore, ResumeError> {
 		let mut store = Self::from_meta_info(directory, &resume_data.meta_info)?;
 		store.has_pieces = resume_data.pieces.clone();
@@ -230,7 +230,7 @@ impl Store for FileStore {
 			file.seek(std::io::SeekFrom::Start(index as u64 - begin as u64))?;
 			file.write_all(
 				&data[(data.len() - remaining_bytes)
-					..(data.len() - remaining_bytes + bytes_to_write)]
+					..(data.len() - remaining_bytes + bytes_to_write)],
 			)?;
 
 			remaining_bytes -= bytes_to_write;
@@ -287,7 +287,7 @@ impl Store for FileStore {
 }
 
 struct FileStoreResume {
-	directory: std::path::PathBuf
+	directory: std::path::PathBuf,
 }
 
 impl Resume<FileStore> for FileStoreResume {
@@ -357,7 +357,7 @@ mod tests {
 			vec![
 				(10, "test_multi_file_a.txt".into()),
 				(8, "test_multi_file_b.txt".into()),
-			]
+			],
 		)
 		.unwrap();
 

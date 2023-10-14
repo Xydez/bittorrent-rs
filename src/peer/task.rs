@@ -11,20 +11,20 @@ use crate::{
 		algorithm,
 		configuration::Configuration,
 		event::{PeerEvent, Sender},
-		piece_download::PieceDownload
+		piece_download::PieceDownload,
 	},
 	peer::{
 		block_worker::{self, get_block},
-		Error, Result
+		Error, Result,
 	},
 	session::{PeerPtr, TorrentPtr},
-	torrent::{TorrentLock, WorkerId}
+	torrent::{TorrentLock, WorkerId},
 };
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 pub struct Mode {
 	pub download: bool,
-	pub seed: bool
+	pub seed: bool,
 }
 
 /*
@@ -85,7 +85,7 @@ async fn get_download(
 
 #[derive(Default)]
 struct PieceIterator {
-	current_piece: Option<(u32, Arc<Mutex<PieceDownload>>)>
+	current_piece: Option<(u32, Arc<Mutex<PieceDownload>>)>,
 }
 
 impl PieceIterator {
@@ -94,7 +94,7 @@ impl PieceIterator {
 		torrent: &'a mut TorrentLock<'_>,
 		peer: &Peer,
 		pid: &str,
-		config: &Configuration
+		config: &Configuration,
 	) -> Option<(Arc<Mutex<PieceDownload>>, u32, u32)> {
 		if let Some((piece, ref download)) = self.current_piece {
 			// TODO: Try with end-game
@@ -140,7 +140,7 @@ pub async fn run(
 	torrent: TorrentPtr,
 	peer: PeerPtr,
 	event_tx: Sender<(WorkerId, PeerEvent)>,
-	mut mode_rx: tokio::sync::watch::Receiver<Mode>
+	mut mode_rx: tokio::sync::watch::Receiver<Mode>,
 ) -> Result<()> {
 	/* Variables */
 
@@ -150,7 +150,7 @@ pub async fn run(
 	let pid = peer.lock().await.peer_id_short();
 
 	let block_semaphore = Arc::new(tokio::sync::Semaphore::new(
-		config.concurrent_block_downloads
+		config.concurrent_block_downloads,
 	));
 
 	// Keeps track of the current piece download

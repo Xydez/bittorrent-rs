@@ -11,14 +11,14 @@ pub enum ResumeError {
 	#[error("The checksum of the provided store does not match the deserialized store")]
 	InvalidChecksum,
 	#[error(transparent)]
-	Other(#[from] Box<dyn std::error::Error>)
+	Other(#[from] Box<dyn std::error::Error>),
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ResumeData {
 	pub meta_info: MetaInfo,
 	pub pieces: Vec<bool>,
-	pub checksum: u64
+	pub checksum: u64,
 }
 
 pub trait Resume<S: Store> {

@@ -33,7 +33,7 @@
 use std::{
 	convert::TryFrom,
 	net::{Ipv4Addr, SocketAddrV4},
-	time::Instant
+	time::Instant,
 };
 
 use thiserror::Error;
@@ -49,7 +49,7 @@ pub enum Error {
 	#[error("The tracker responded with invalid bencode")]
 	InvalidResponseEncoding(#[from] serde_bencode::Error),
 	#[error("The tracker responded with an error: {0}")]
-	TrackerError(String)
+	TrackerError(String),
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
@@ -58,7 +58,7 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub enum Event {
 	Started,
 	Completed,
-	Stopped
+	Stopped,
 }
 
 /// Announce message sent to the tracker to broadcast events and receive a list of possible peers to establish a connection with
@@ -85,7 +85,7 @@ pub struct Announce {
 	/// * [Event::Stopped] when the client is shutting down
 	/// * [Event::Completed] when all of the pieces of a torrent have been downloaded
 	/// or [None] if it is an event-less request informing the tracker of the client's progress and updating the peer list
-	pub event: Option<Event>
+	pub event: Option<Event>,
 }
 
 /// BitTorrent tracker
@@ -98,7 +98,7 @@ pub struct Tracker {
 	/// Optional field containing the time and response of last announce that was sent to the tracker
 	last_announce: Option<(Instant, Response)>,
 	/// Optional tracker id received from the tracker
-	tracker_id: Option<String>
+	tracker_id: Option<String>,
 }
 
 impl Tracker {
@@ -110,7 +110,7 @@ impl Tracker {
 			client: reqwest::Client::new(),
 			announce_url: announce.to_string(),
 			last_announce: None,
-			tracker_id: None
+			tracker_id: None,
 		}
 	}
 
@@ -135,9 +135,9 @@ impl Tracker {
 				match event {
 					Event::Started => "started",
 					Event::Completed => "completed",
-					Event::Stopped => "stopped"
+					Event::Stopped => "stopped",
 				}
-				.to_string()
+				.to_string(),
 			));
 		}
 
@@ -178,7 +178,7 @@ impl Tracker {
 			Some(reason) => Err(Error::TrackerError(reason)),
 			None => Ok(Response {
 				interval: std::time::Duration::from_secs(
-					response_raw.interval.ok_or(Error::InvalidResponse)? as u64
+					response_raw.interval.ok_or(Error::InvalidResponse)? as u64,
 				),
 				min_interval: response_raw
 					.min_interval
@@ -193,12 +193,12 @@ impl Tracker {
 							.map(|chunk| {
 								SocketAddrV4::new(
 									Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]),
-									u16::from_be_bytes([chunk[4], chunk[5]])
+									u16::from_be_bytes([chunk[4], chunk[5]]),
 								)
 							})
 					})
-					.collect::<Result<Vec<std::net::SocketAddrV4>>>()?
-			})
+					.collect::<Result<Vec<std::net::SocketAddrV4>>>()?,
+			}),
 		};
 
 		if response.is_ok() {
@@ -225,7 +225,7 @@ pub struct Response {
 	/// Minimum interval in seconds the client MUST wait between sending event-less requests to the tracker
 	pub min_interval: Option<std::time::Duration>,
 	/// List of peers the client MAY connect to
-	pub peers_addrs: Vec<std::net::SocketAddrV4>
+	pub peers_addrs: Vec<std::net::SocketAddrV4>,
 }
 
 mod raw {
@@ -246,7 +246,7 @@ mod raw {
 		pub peers: Option<serde_bytes::ByteBuf>,
 		/// A string that the client should send back on its next announcements. If absent and a previous announce sent a tracker id, do not discard the old value; keep using it.
 		#[serde(rename = "tracker id")]
-		pub tracker_id: Option<String>
+		pub tracker_id: Option<String>,
 	}
 }
 
@@ -260,7 +260,7 @@ mod tests {
 		let mut tracker = Tracker::new("http://bttracker.debian.org:6969/announce");
 
 		let info_hash: [u8; 20] = [
-			154, 90, 140, 217, 173, 154, 190, 9, 16, 112, 10, 41, 14, 168, 97, 130, 46, 160, 90, 10
+			154, 90, 140, 217, 173, 154, 190, 9, 16, 112, 10, 41, 14, 168, 97, 130, 46, 160, 90, 10,
 		];
 
 		tracker
@@ -272,7 +272,7 @@ mod tests {
 				uploaded: 0,
 				downloaded: 0,
 				left: 0,
-				event: None
+				event: None,
 			})
 			.await
 			.unwrap();

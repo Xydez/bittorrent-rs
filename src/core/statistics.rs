@@ -11,7 +11,7 @@ pub struct Statistics {
 	/// Data sent to peers in bytes
 	uploaded: usize,
 	downloads: VecDeque<(Instant, usize)>,
-	uploads: VecDeque<(Instant, usize)>
+	uploads: VecDeque<(Instant, usize)>,
 }
 
 impl Statistics {

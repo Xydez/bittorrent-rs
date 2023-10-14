@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[error("Bitfield error: {msg}")]
 pub struct Error {
-	msg: String
+	msg: String,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -12,14 +12,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Bitfield {
 	data: Vec<u8>,
-	length: usize
+	length: usize,
 }
 
 impl Bitfield {
 	pub fn new(length: usize) -> Bitfield {
 		Bitfield {
 			data: vec![0; length.div_ceil(8)],
-			length
+			length,
 		}
 	}
 
@@ -27,7 +27,7 @@ impl Bitfield {
 	pub fn from_bytes(data: &[u8]) -> Bitfield {
 		Bitfield {
 			data: data.to_vec(),
-			length: data.len() * 8
+			length: data.len() * 8,
 		}
 	}
 
@@ -45,7 +45,7 @@ impl Bitfield {
 					"data.len() * 8 >= length failed. data.len() = {}, length = {}",
 					data.len(),
 					length
-				)
+				),
 			});
 		}
 
@@ -53,19 +53,19 @@ impl Bitfield {
 
 		if remaining_bits >= 8 {
 			return Err(Error {
-				msg: format!("remaining_bits = {remaining_bits}")
+				msg: format!("remaining_bits = {remaining_bits}"),
 			});
 		}
 
 		let bitfield = Bitfield {
 			data: data.to_vec(),
-			length
+			length,
 		};
 
 		for i in length..(data.len() * 8) {
 			if bitfield.get(i) {
 				return Err(Error {
-					msg: format!("bitfield[{i}] != 0")
+					msg: format!("bitfield[{i}] != 0"),
 				});
 			}
 		}
@@ -96,7 +96,7 @@ impl Bitfield {
 	pub fn iter(&self) -> BitfieldIterator {
 		BitfieldIterator {
 			bitfield: self,
-			index: 0
+			index: 0,
 		}
 	}
 
@@ -128,7 +128,7 @@ impl Bitfield {
 
 pub struct BitfieldIterator<'a> {
 	bitfield: &'a Bitfield,
-	index: usize
+	index: usize,
 }
 
 impl<'a> Iterator for BitfieldIterator<'a> {
@@ -154,7 +154,7 @@ impl<'a> IntoIterator for &'a Bitfield {
 	fn into_iter(self) -> Self::IntoIter {
 		BitfieldIterator {
 			bitfield: self,
-			index: 0
+			index: 0,
 		}
 	}
 }
@@ -170,7 +170,7 @@ impl std::ops::BitOr for Bitfield {
 				.iter()
 				.zip(rhs.iter())
 				.map(|(a, b)| a | b)
-				.collect::<Vec<_>>()
+				.collect::<Vec<_>>(),
 		)
 	}
 }

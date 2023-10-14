@@ -10,11 +10,11 @@ use tap::Tap;
 use super::{
 	configuration::Configuration,
 	piece::{Priority, State},
-	piece_download::PieceDownload
+	piece_download::PieceDownload,
 };
 use crate::{
 	peer::Peer,
-	torrent::{TorrentLock, WorkerId}
+	torrent::{TorrentLock, WorkerId},
 };
 
 // TODO: In all honesty we really don't want async hhere..
@@ -87,7 +87,7 @@ pub fn select_piece(torrent: &TorrentLock<'_>, peer: &Peer, config: &Configurati
 /// 2. If no pending blocks are found, download the block with the least amount of workers currently working on it
 pub fn select_block(
 	download: &PieceDownload,
-	worker_id: WorkerId //end_game: bool
+	worker_id: WorkerId, //end_game: bool
 ) -> Option<u32> {
 	download
 		.blocks
@@ -111,7 +111,7 @@ pub fn select_block(
 					.block_downloads
 					.iter()
 					.filter(|(block_id, _)| *block_id == i as u32)
-					.count()
+					.count(),
 			)
 		})
 		//.filter(|(_, worker_count)| end_game || *worker_count == 0)
@@ -122,7 +122,7 @@ pub fn select_block(
 					worker_count_a
 						.cmp(worker_count_b)
 						.then(block_id_a.cmp(block_id_b))
-				}
+				},
 			)
 		})
 		.first()

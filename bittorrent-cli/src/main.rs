@@ -5,9 +5,9 @@ use bittorrent::{
 	common::util,
 	core::{
 		event::{Event, PieceEvent, TorrentEvent},
-		piece::State
+		piece::State,
 	},
-	prelude::*
+	prelude::*,
 };
 use log::{error, info, warn};
 //use tracing::{info, warn, error, instrument::WithSubscriber};
@@ -26,13 +26,13 @@ struct Args {
 
 	/// download directory, defaults to the current dir
 	#[argh(option, default = "\"downloads\".into()")]
-	dir: PathBuf
+	dir: PathBuf,
 }
 
 #[tokio::main] // (flavor = "current_thread")
 async fn main() {
 	let _logger = flexi_logger::Logger::try_with_str(
-		"debug, bittorrent=trace, bittorrent::core::worker=debug"
+		"debug, bittorrent=trace, bittorrent::core::worker=debug",
 	)
 	.unwrap()
 	.log_to_file(flexi_logger::FileSpec::default().directory("logs"))
@@ -93,7 +93,7 @@ async fn main() {
 
 				if let Err(error) = bincode::serialize_into(
 					std::fs::File::create(&resume_file).unwrap(),
-					&resume_data
+					&resume_data,
 				) {
 					error!("Failed to write resume data: {}", util::error_chain(error));
 				}
@@ -132,7 +132,7 @@ async fn main() {
 							State::Verifying => verifying += 1,
 							State::Writing => writing += 1,
 							State::Done => done += 1,
-							State::Ignore => ()
+							State::Ignore => (),
 						}
 					}
 
@@ -157,7 +157,7 @@ async fn main() {
 					session.shutdown();
 				}
 			}
-			_ => ()
+			_ => (),
 		}
 	}
 

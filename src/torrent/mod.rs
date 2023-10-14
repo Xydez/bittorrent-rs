@@ -1,13 +1,13 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	future::Future,
-	sync::{atomic::AtomicU32, Arc}
+	sync::{atomic::AtomicU32, Arc},
 };
 
 use common::util;
 use io::{
 	resume::{Resume, ResumeData},
-	store::Store
+	store::Store,
 };
 use protocol::{metainfo::MetaInfo, tracker::Tracker};
 use tokio::sync::{Mutex, MutexGuard, OwnedSemaphorePermit};
@@ -20,9 +20,9 @@ use crate::{
 		configuration::Configuration,
 		piece::{self, Piece, Priority, State},
 		piece_download::PieceDownload,
-		statistics::Statistics
+		statistics::Statistics,
 	},
-	session::{EventSender, TorrentPtr}
+	session::{EventSender, TorrentPtr},
 };
 
 //mod peer_set;
@@ -52,7 +52,7 @@ impl std::fmt::Display for TorrentId {
 pub struct TorrentHandle {
 	pub torrent: TorrentPtr,
 	cmd_tx: CommandSender,
-	conn_tx: tokio::sync::mpsc::UnboundedSender<(Peer, Option<OwnedSemaphorePermit>)>
+	conn_tx: tokio::sync::mpsc::UnboundedSender<(Peer, Option<OwnedSemaphorePermit>)>,
 }
 
 impl TorrentHandle {
@@ -83,12 +83,12 @@ pub struct Torrent {
 	/// Store of the torrent
 	pub store: Mutex<Box<dyn Store>>,
 	/// Mutable state of the torrent
-	state: Mutex<TorrentState>
+	state: Mutex<TorrentState>,
 }
 
 pub struct TorrentLock<'a> {
 	pub(crate) torrent: &'a Torrent,
-	state: MutexGuard<'a, TorrentState>
+	state: MutexGuard<'a, TorrentState>,
 }
 
 #[derive(Debug)]
@@ -103,7 +103,7 @@ pub struct TorrentState {
 	/// The tracker for the torrent
 	pub tracker: Tracker,
 	/// Statistics for the torrent
-	pub stats: Statistics
+	pub stats: Statistics,
 }
 
 impl Torrent {
@@ -116,7 +116,7 @@ impl Torrent {
 
 	pub fn new_resumed<S: Store + 'static, T: Resume<S>>(
 		resume: T,
-		resume_data: ResumeData
+		resume_data: ResumeData,
 	) -> Result<Torrent, T::Error> {
 		let meta_info = resume_data.meta_info.clone();
 		let store = Box::new(resume.resume(&resume_data)?);
@@ -141,21 +141,21 @@ impl Torrent {
 			pieces,
 			downloads: HashMap::new(),
 			tracker,
-			stats: Statistics::default()
+			stats: Statistics::default(),
 		});
 
 		Torrent {
 			id,
 			meta_info,
 			store,
-			state
+			state,
 		}
 	}
 
 	pub fn spawn(
 		self,
 		event_tx: EventSender,
-		config: Arc<Configuration>
+		config: Arc<Configuration>,
 	) -> (TorrentHandle, impl Future<Output = task::Result<()>>) {
 		let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
 		let (conn_tx, conn_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -164,7 +164,7 @@ impl Torrent {
 		let handle = TorrentHandle {
 			torrent: torrent.clone(),
 			cmd_tx,
-			conn_tx: conn_tx.clone()
+			conn_tx: conn_tx.clone(),
 		};
 
 		let fut = task::run(torrent, cmd_rx, event_tx, (conn_tx, conn_rx), config);
@@ -175,7 +175,7 @@ impl Torrent {
 	pub async fn lock(&self) -> TorrentLock<'_> {
 		TorrentLock {
 			torrent: self,
-			state: self.state.lock().await
+			state: self.state.lock().await,
 		}
 	}
 
@@ -192,7 +192,7 @@ impl Torrent {
 		ResumeData {
 			meta_info: self.meta_info.clone(),
 			pieces,
-			checksum: self.store.lock().await.checksum().unwrap()
+			checksum: self.store.lock().await.checksum().unwrap(),
 		}
 	}
 }
@@ -259,7 +259,7 @@ impl<'a> TorrentLock<'a> {
 					})
 				})
 				.collect::<Vec<u8>>(),
-			self.state.pieces.len()
+			self.state.pieces.len(),
 		)
 		.unwrap()
 	}

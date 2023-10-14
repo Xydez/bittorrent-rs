@@ -61,7 +61,7 @@ pub enum Style {
 	/// * "AB??" => "A.B"
 	OneOne,
 	/// Unknown style
-	Unknown(String)
+	Unknown(String),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -69,7 +69,7 @@ pub struct Version {
 	pub major: u8,
 	pub minor: u8,
 	pub patch: Option<u8>,
-	pub build: Option<u8>
+	pub build: Option<u8>,
 }
 
 impl Version {
@@ -78,7 +78,7 @@ impl Version {
 			major,
 			minor,
 			patch,
-			build
+			build,
 		}
 	}
 
@@ -96,14 +96,14 @@ impl Version {
 				major: ctoi(digits[0])?,
 				minor: ctoi(digits[1])?,
 				patch: Some(ctoi(digits[2])?),
-				build: Some(ctoi(digits[3])?)
+				build: Some(ctoi(digits[3])?),
 			},
 
 			Style::SkipOneTwo => Version {
 				major: ctoi(digits[1])?,
 				minor: ctoi(digits[2])? * 10 + ctoi(digits[3])?,
 				patch: None,
-				build: None
+				build: None,
 			},
 			Style::Transmission => {
 				if digits[0] == b'0' && digits[1] == b'0' {
@@ -111,14 +111,14 @@ impl Version {
 						major: 0,
 						minor: ctoi(digits[2]).unwrap_or(0) * 10 + ctoi(digits[3])?,
 						patch: None,
-						build: None
+						build: None,
 					}
 				} else {
 					Version {
 						major: ctoi(digits[0])?,
 						minor: ctoi(digits[1])? * 10 + ctoi(digits[2])?,
 						patch: None,
-						build: None
+						build: None,
 					}
 				}
 			}
@@ -126,33 +126,33 @@ impl Version {
 				major: ctoi(digits[0])?,
 				minor: ctoi(digits[1])?,
 				patch: Some(ctoi(digits[2])?),
-				build: None
+				build: None,
 			},
 			Style::ThreeHex => Version {
 				major: ctoix(digits[0])?,
 				minor: ctoix(digits[1])?,
 				patch: Some(ctoix(digits[2])?),
-				build: None
+				build: None,
 			},
 			Style::OneThree => Version {
 				major: ctoi(digits[0])?,
 				minor: ctoi(digits[1])? * 100 + ctoi(digits[2])? * 10 + ctoi(digits[3])?,
 				patch: None,
-				build: None
+				build: None,
 			},
 			Style::OneOne => Version {
 				major: ctoi(digits[0])?,
 				minor: ctoi(digits[1])?,
 				patch: None,
-				build: None
+				build: None,
 			},
 			Style::TwoTwo => Version {
 				major: ctoi(digits[0])? * 10 + ctoi(digits[1])?,
 				minor: ctoi(digits[2])? * 10 + ctoi(digits[3])?,
 				patch: None,
-				build: None
+				build: None,
 			},
-			Style::Unknown(_) => return Err(Error::UnknownFormat)
+			Style::Unknown(_) => return Err(Error::UnknownFormat),
 		})
 	}
 }
@@ -178,7 +178,7 @@ pub struct PeerId {
 	pub name: Option<String>,
 	pub name_short: String,
 	pub version: Version,
-	random: Vec<u8>
+	random: Vec<u8>,
 }
 
 impl PeerId {
@@ -192,7 +192,7 @@ impl PeerId {
 			char::from_digit(version.minor as u32, 10).unwrap() as u8,
 			char::from_digit(version.patch.unwrap_or(0) as u32, 10).unwrap() as u8,
 			char::from_digit(version.build.unwrap_or(0) as u32, 10).unwrap() as u8,
-			b'-'
+			b'-',
 		]
 		.into_iter()
 		//.chain(std::iter::from_fn(|| {
@@ -200,7 +200,7 @@ impl PeerId {
 		//}))
 		.chain(rand::Rng::sample_iter(
 			&mut rand::thread_rng(),
-			rand::distributions::Alphanumeric
+			rand::distributions::Alphanumeric,
 		))
 		.take(20)
 		.collect::<Vec<u8>>()
@@ -228,7 +228,7 @@ impl PeerId {
 				.iter()
 				.find(|client| client.short == name_short)
 				.ok_or(Error::UnknownClient(
-					String::from_utf8(name_short.to_vec()).map_err(|_| Error::Invalid)?
+					String::from_utf8(name_short.to_vec()).map_err(|_| Error::Invalid)?,
 				))?;
 
 			let version = Version::parse(digits, client.style.clone())?;
@@ -237,7 +237,7 @@ impl PeerId {
 				name: Some(client.long.clone()),
 				name_short: String::from_utf8(name_short.to_vec()).unwrap(),
 				version,
-				random: random.to_vec()
+				random: random.to_vec(),
 			});
 		}
 
@@ -256,7 +256,7 @@ impl PeerId {
 			&util::parse_hex(value)
 				.map_err(|_| Error::Invalid)?
 				.try_into()
-				.map_err(|_| Error::Invalid)?
+				.map_err(|_| Error::Invalid)?,
 		)
 	}
 }
@@ -279,7 +279,7 @@ pub enum Error {
 	#[error("The Peer ID could not be parsed because the client '{0}' is unknown")]
 	UnknownClient(String),
 	#[error("The Peer ID is invalid")]
-	Invalid
+	Invalid,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -287,7 +287,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 struct Client {
 	pub short: Vec<u8>,
 	pub long: String,
-	pub style: Style
+	pub style: Style,
 }
 
 // See: https://github.com/webtorrent/bittorrent-peerid/blob/c596e92f1a9092f4d30c3ad08769d640e9fb3c6b/index.js#L188

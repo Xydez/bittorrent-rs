@@ -5,7 +5,7 @@ pub enum Error {
 	#[error("Message ids must be between 0-8 (Got {0})")]
 	InvalidID(u8),
 	#[error("Invalid payload length")]
-	InvalidPayload
+	InvalidPayload,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -51,7 +51,7 @@ pub enum Message {
 	/// * index - Piece index,
 	/// * begin - Offset within piece measured in bytes
 	/// * length - Block length, usually 16 384, sometimes truncated
-	Cancel(u32, u32, u32)
+	Cancel(u32, u32, u32),
 }
 
 impl Message {
@@ -66,7 +66,7 @@ impl Message {
 			Message::Request(..) => Some(6),
 			Message::Piece(..) => Some(7),
 			Message::Cancel(..) => Some(8),
-			Message::KeepAlive => None
+			Message::KeepAlive => None,
 		}
 	}
 }
@@ -90,14 +90,14 @@ impl TryFrom<&[u8]> for Message {
 						1 => Ok(Message::Unchoke),
 						2 => Ok(Message::Interested),
 						3 => Ok(Message::NotInterested),
-						_ => unreachable!()
+						_ => unreachable!(),
 					}
 				} else {
 					Err(Error::InvalidPayload)
 				}
 			}
 			4 => Ok(Message::Have(u32::from_be_bytes(
-				payload.try_into().map_err(|_| Error::InvalidPayload)?
+				payload.try_into().map_err(|_| Error::InvalidPayload)?,
 			))),
 			5 => Ok(Message::Bitfield(payload.to_vec())),
 			6 => {
@@ -105,7 +105,7 @@ impl TryFrom<&[u8]> for Message {
 					Ok(Message::Request(
 						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
 						u32::from_be_bytes(payload[4..8].try_into().unwrap()),
-						u32::from_be_bytes(payload[8..12].try_into().unwrap())
+						u32::from_be_bytes(payload[8..12].try_into().unwrap()),
 					))
 				} else {
 					Err(Error::InvalidPayload)
@@ -116,7 +116,7 @@ impl TryFrom<&[u8]> for Message {
 					Ok(Message::Piece(
 						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
 						u32::from_be_bytes(payload[4..8].try_into().unwrap()),
-						payload[8..].to_vec()
+						payload[8..].to_vec(),
 					))
 				} else {
 					Err(Error::InvalidPayload)
@@ -127,13 +127,13 @@ impl TryFrom<&[u8]> for Message {
 					Ok(Message::Cancel(
 						u32::from_be_bytes(payload[0..4].try_into().unwrap()),
 						u32::from_be_bytes(payload[4..8].try_into().unwrap()),
-						u32::from_be_bytes(payload[8..12].try_into().unwrap())
+						u32::from_be_bytes(payload[8..12].try_into().unwrap()),
 					))
 				} else {
 					Err(Error::InvalidPayload)
 				}
 			}
-			id => Err(Error::InvalidID(id))
+			id => Err(Error::InvalidID(id)),
 		}
 	}
 }
@@ -153,9 +153,9 @@ impl From<Message> for Vec<u8> {
 				[
 					index.to_be_bytes(),
 					begin.to_be_bytes(),
-					length.to_be_bytes()
+					length.to_be_bytes(),
 				]
-				.concat()
+				.concat(),
 			),
 			Message::Piece(index, begin, piece) => {
 				data.extend([&index.to_be_bytes(), &begin.to_be_bytes(), piece.as_slice()].concat())
@@ -164,11 +164,11 @@ impl From<Message> for Vec<u8> {
 				[
 					index.to_be_bytes(),
 					begin.to_be_bytes(),
-					length.to_be_bytes()
+					length.to_be_bytes(),
 				]
-				.concat()
+				.concat(),
 			),
-			_ => ()
+			_ => (),
 		}
 
 		data

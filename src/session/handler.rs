@@ -8,10 +8,10 @@ use log::{debug, info, warn};
 use crate::{
 	core::{
 		event::{Event, PeerEvent, PieceEvent, TorrentEvent},
-		piece
+		piece,
 	},
 	session::Session,
-	torrent::TorrentId
+	torrent::TorrentId,
 };
 
 pub async fn handle(session: &mut Session, event: &Event) {
@@ -29,7 +29,7 @@ async fn handle_torrent_event(
 	session: &Session,
 	prefix: String,
 	torrent_id: TorrentId,
-	event: &TorrentEvent
+	event: &TorrentEvent,
 ) {
 	match event {
 		// TODO: Useless log messages
@@ -66,7 +66,7 @@ async fn handle_torrent_event(
 
 			session.torrents[&torrent_id].complete().await;
 		}
-		_ => ()
+		_ => (),
 	}
 }
 
@@ -75,7 +75,7 @@ async fn handle_piece_downloaded(
 	session: &Session,
 	piece: u32,
 	torrent_id: TorrentId,
-	data: Arc<Vec<u8>>
+	data: Arc<Vec<u8>>,
 ) {
 	debug!("{prefix} | Piece downloaded, starting verification worker");
 
@@ -101,7 +101,7 @@ async fn handle_piece_downloaded(
 			if tx
 				.send(Event::TorrentEvent(
 					torrent.id,
-					TorrentEvent::PieceEvent(piece, PieceEvent::Verified(data))
+					TorrentEvent::PieceEvent(piece, PieceEvent::Verified(data)),
 				))
 				.is_err()
 			{
@@ -118,13 +118,16 @@ async fn handle_block_received(
 	session: &Session,
 	torrent_id: TorrentId,
 	piece: u32,
-	block: u32
+	block: u32,
 ) {
 	let torrent = &session.torrents[&torrent_id].torrent;
 
 	let Some(download) = torrent.lock().await.state().downloads.get(&piece).cloned() else {
 		// This probably means that the download succeeded but we did not cancel the piece
-		warn!("{prefix} | Download for block {} not found, block downloaded in vain", util::fmt_block(piece, block));
+		warn!(
+			"{prefix} | Download for block {} not found, block downloaded in vain",
+			util::fmt_block(piece, block)
+		);
 		return;
 	};
 
@@ -148,7 +151,7 @@ async fn handle_block_received(
 			.tx
 			.send(Event::TorrentEvent(
 				torrent_id,
-				TorrentEvent::PieceEvent(piece, PieceEvent::Downloaded(Arc::new(data)))
+				TorrentEvent::PieceEvent(piece, PieceEvent::Downloaded(Arc::new(data))),
 			))
 			.unwrap();
 	}
@@ -159,7 +162,7 @@ async fn handle_piece_verified(
 	session: &Session,
 	torrent_id: TorrentId,
 	piece: u32,
-	data: Arc<Vec<u8>>
+	data: Arc<Vec<u8>>,
 ) {
 	debug!("{prefix} | Piece verified, writing to store");
 
@@ -191,7 +194,7 @@ async fn handle_piece_verified(
 
 		tx.send(Event::TorrentEvent(
 			torrent.id,
-			TorrentEvent::PieceEvent(piece, PieceEvent::Done)
+			TorrentEvent::PieceEvent(piece, PieceEvent::Done),
 		))
 		.unwrap();
 	});

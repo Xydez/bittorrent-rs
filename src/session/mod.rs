@@ -8,10 +8,10 @@ use crate::{
 	core::{
 		configuration::Configuration,
 		event::{Event, TorrentEvent},
-		piece_download::PieceDownload
+		piece_download::PieceDownload,
 	},
 	peer::Peer,
-	torrent::{Torrent, TorrentId}
+	torrent::{Torrent, TorrentId},
 };
 
 mod handler;
@@ -30,7 +30,7 @@ pub trait EventCallback = Fn(&Session, &Event);
 
 pub struct SessionHandle {
 	data: Arc<Mutex<Session>>,
-	cmd_tx: CommandSender
+	cmd_tx: CommandSender,
 }
 
 impl SessionHandle {
@@ -79,7 +79,7 @@ pub struct Session {
 	/// Sends events to event listeners
 	broadcast_tx: tokio::sync::broadcast::Sender<Event>,
 	/// Semaphore to track the number of pieces that can be verified at the same time
-	verification_semaphore: Arc<Semaphore>
+	verification_semaphore: Arc<Semaphore>,
 }
 
 impl Session {
@@ -90,7 +90,7 @@ impl Session {
 
 	/// Constructs a session with the provided configuration
 	pub fn spawn_with_config(
-		config: Configuration
+		config: Configuration,
 	) -> (SessionHandle, tokio::sync::broadcast::Receiver<Event>) {
 		let config = Arc::new(config);
 		let verification_semaphore = Arc::new(Semaphore::new(config.verification_jobs));
@@ -104,7 +104,7 @@ impl Session {
 			tx,
 			broadcast_tx,
 			verification_semaphore,
-			torrents: HashMap::new()
+			torrents: HashMap::new(),
 		};
 
 		let data = Arc::new(Mutex::new(data));

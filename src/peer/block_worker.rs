@@ -11,7 +11,7 @@ pub enum Error {
 	#[error("Choked during download")]
 	Choked,
 	#[error("Peer is shutting down")]
-	Shutdown
+	Shutdown,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -22,7 +22,7 @@ pub async fn get_block(
 	piece: u32,
 	(block_begin, block_size): (u32, u32),
 	message_tx: tokio::sync::mpsc::Sender<Message>,
-	mut message_rx: tokio::sync::broadcast::Receiver<Message>
+	mut message_rx: tokio::sync::broadcast::Receiver<Message>,
 ) -> Result<Vec<u8>> {
 	trace!(
 		"[{pid}] Requesting block {}:[{}-{}]",
@@ -56,7 +56,7 @@ pub async fn get_block(
 			Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
 				Err(Error::Lagged(count))
 			}
-			_ => continue
+			_ => continue,
 		};
 	}
 }

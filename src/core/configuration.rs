@@ -1,6 +1,6 @@
 use protocol::{
 	extensions::Extensions,
-	peer_id::{PeerId, Version}
+	peer_id::{PeerId, Version},
 };
 use rand::Rng;
 
@@ -70,7 +70,7 @@ pub struct Configuration {
 	/// * SHOULD be within `6881..=6889` as clients MAY choose to give up if the port is not within this range
 	///
 	/// Default: Random number in the range `6881..=6889`
-	pub port: u16
+	pub port: u16,
 }
 
 impl Default for Configuration {
@@ -91,7 +91,7 @@ impl Default for Configuration {
 			initial_pieces: 4,
 			peer_id: PeerId::generate(*b"bt", Version::new(0, 1, None, None)), //[b'x'; 20],
 			extensions: Extensions([0; 8]),
-			port: rand::thread_rng().gen_range(6881..=6889)
+			port: rand::thread_rng().gen_range(6881..=6889),
 		}
 	}
 }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Piece {
 	pub priority: Priority,
 	pub state: State,
-	pub availability: usize
+	pub availability: usize,
 }
 
 impl Default for Piece {
@@ -12,7 +12,7 @@ impl Default for Piece {
 		Piece {
 			priority: Priority::Normal,
 			state: State::Pending,
-			availability: 0
+			availability: 0,
 		}
 	}
 }
@@ -29,7 +29,7 @@ pub enum Priority {
 	/// Pieces with priority `Priority::High` are selected before pieces with priority `Priority::Normal` or lower
 	High,
 	/// All pieces with priority `Priority::Highest` MUST be `State::Verifying` or `State::Done` before any other pieces begin downloading
-	Highest
+	Highest,
 }
 
 /// The state of a piece
@@ -44,5 +44,5 @@ pub enum State {
 	/// The piece has been verified and is being written to the store
 	Writing,
 	/// The piece has been downloaded, verified and written to the store
-	Done
+	Done,
 }

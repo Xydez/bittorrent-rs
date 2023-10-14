@@ -4,7 +4,7 @@ use bytes::{Buf, BytesMut};
 use thiserror::Error;
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
-	net::TcpStream
+	net::TcpStream,
 };
 
 use super::message::{self, Message};
@@ -19,7 +19,7 @@ pub enum Error {
 	#[error("An invalid handshake was received")]
 	InvalidHandshake,
 	#[error("An invalid message was received")]
-	InvalidMessage(#[from] message::Error)
+	InvalidMessage(#[from] message::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -28,7 +28,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub struct Handshake {
 	pub extensions: Extensions,
 	pub info_hash: [u8; 20],
-	pub peer_id: [u8; 20]
+	pub peer_id: [u8; 20],
 }
 
 impl Handshake {
@@ -36,7 +36,7 @@ impl Handshake {
 		Handshake {
 			extensions,
 			info_hash,
-			peer_id
+			peer_id,
 		}
 	}
 }
@@ -44,7 +44,7 @@ impl Handshake {
 #[derive(Debug)]
 pub struct Wire {
 	stream: TcpStream,
-	buffer: BytesMut
+	buffer: BytesMut,
 }
 
 impl Wire {
@@ -57,7 +57,7 @@ impl Wire {
 	pub fn new(stream: TcpStream) -> Wire {
 		Wire {
 			stream,
-			buffer: BytesMut::with_capacity(32_768) // 32 KiB
+			buffer: BytesMut::with_capacity(32_768), // 32 KiB
 		}
 	}
 
@@ -103,7 +103,7 @@ impl Wire {
 						std::io::ErrorKind::ConnectionReset
 					} else {
 						std::io::ErrorKind::UnexpectedEof
-					}
+					},
 				)));
 			}
 		}
@@ -158,7 +158,7 @@ impl Wire {
 		Ok(Handshake {
 			extensions,
 			info_hash,
-			peer_id
+			peer_id,
 		})
 	}
 

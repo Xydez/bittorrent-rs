@@ -4,11 +4,11 @@ use common::util;
 use log::{debug, error, trace};
 use protocol::wire::{
 	self,
-	connection::{Handshake, Wire}
+	connection::{Handshake, Wire},
 };
 use tokio::{
 	net::{TcpListener, TcpStream},
-	sync::Mutex
+	sync::Mutex,
 };
 
 use super::{EventReceiver, Session};
@@ -16,13 +16,13 @@ use crate::{
 	core::event::Event,
 	peer::Peer,
 	session::handler,
-	torrent::{Torrent, TorrentHandle, TorrentId}
+	torrent::{Torrent, TorrentHandle, TorrentId},
 };
 
 #[derive(Debug)]
 pub enum Command {
 	AddTorrent(tokio::sync::oneshot::Sender<TorrentId>, Torrent),
-	Shutdown
+	Shutdown,
 }
 
 pub type CommandSender = tokio::sync::mpsc::UnboundedSender<Command>;
@@ -34,7 +34,7 @@ pub type CommandReceiver = tokio::sync::mpsc::UnboundedReceiver<Command>;
 pub async fn run(
 	session: Arc<Mutex<Session>>,
 	mut cmd_rx: CommandReceiver,
-	mut event_rx: EventReceiver
+	mut event_rx: EventReceiver,
 ) {
 	let config = session.lock().await.config.clone();
 
@@ -102,7 +102,7 @@ pub async fn run(
 
 async fn handle_connection(
 	session: &Session,
-	stream: TcpStream
+	stream: TcpStream,
 ) -> wire::connection::Result<(Peer, Arc<TorrentHandle>)> {
 	// Create wire & send on conn_tx
 	let mut wire = Wire::new(stream);
@@ -126,7 +126,7 @@ async fn handle_connection(
 	wire.send_handshake(&Handshake::new(
 		torrent_handle.torrent.meta_info.info_hash,
 		session.config.peer_id,
-		session.config.extensions
+		session.config.extensions,
 	))
 	.await?;
 

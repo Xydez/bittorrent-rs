@@ -11,7 +11,7 @@ pub enum Error {
 	#[error("Failed to serialize or deserialize bencode")]
 	BencodeError(#[from] serde_bencode::Error),
 	#[error("The meta info is invalid")]
-	InvalidMetaInfo
+	InvalidMetaInfo,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -35,7 +35,7 @@ pub struct MetaInfo {
 	/// Size of the last piece in bytes
 	pub last_piece_size: usize,
 	/// Information for each file in the torrent
-	pub files: Vec<FileInfo>
+	pub files: Vec<FileInfo>,
 }
 
 impl TryFrom<&[u8]> for MetaInfo {
@@ -66,7 +66,7 @@ impl TryFrom<&[u8]> for MetaInfo {
 					file_infos.push(FileInfo {
 						path: file.path.iter().collect(),
 						length: file.length,
-						offset
+						offset,
 					});
 
 					offset += file.length;
@@ -79,9 +79,9 @@ impl TryFrom<&[u8]> for MetaInfo {
 				Some(length) => vec![FileInfo {
 					path: metadata.info.name.clone().into(),
 					length,
-					offset: 0
-				}]
-			}
+					offset: 0,
+				}],
+			},
 		};
 
 		let size = files.iter().fold(0, |acc, x| acc + x.length);
@@ -98,7 +98,7 @@ impl TryFrom<&[u8]> for MetaInfo {
 			} else {
 				size % metadata.info.piece_length
 			},
-			files
+			files,
 		})
 	}
 }
@@ -134,7 +134,7 @@ impl MetaInfo {
 pub struct FileInfo {
 	pub path: std::path::PathBuf,
 	pub length: usize,
-	pub offset: usize
+	pub offset: usize,
 }
 
 mod raw {
@@ -143,7 +143,7 @@ mod raw {
 	#[derive(Debug, Deserialize)]
 	pub struct MetaInfo {
 		pub announce: String,
-		pub info: Info
+		pub info: Info,
 	}
 
 	#[derive(Debug, Serialize, Deserialize)]
@@ -164,7 +164,7 @@ mod raw {
 		/// appear in the files dictionary (i.e. all pieces in the torrent are
 		/// the full piece length except for the last piece, which may be
 		/// shorter)
-		pub pieces: serde_bytes::ByteBuf
+		pub pieces: serde_bytes::ByteBuf,
 	}
 
 	#[derive(Debug, Serialize, Deserialize)]
@@ -172,7 +172,7 @@ mod raw {
 		/// Size of the file in bytes.
 		pub length: usize,
 		/// A list of strings corresponding to subdirectory names, the last of which is the actual file name
-		pub path: Vec<String>
+		pub path: Vec<String>,
 	}
 }
 
@@ -190,7 +190,7 @@ mod tests {
 		105, 101, 99, 101, 32, 108, 101, 110, 103, 116, 104, 105, 54, 53, 53, 51, 54, 101, 54, 58,
 		112, 105, 101, 99, 101, 115, 50, 48, 58, 92, 197, 230, 82, 190, 13, 230, 242, 120, 5, 179,
 		4, 100, 255, 155, 0, 244, 137, 240, 201, 55, 58, 112, 114, 105, 118, 97, 116, 101, 105, 49,
-		101, 101, 101
+		101, 101, 101,
 	];
 
 	#[test]
@@ -201,19 +201,19 @@ mod tests {
 			announce: "udp://tracker.openbittorrent.com:80".to_string(),
 			info_hash: [
 				136, 250, 95, 136, 226, 2, 250, 155, 100, 55, 160, 172, 184, 222, 165, 99, 222, 40,
-				192, 120
+				192, 120,
 			],
 			pieces: vec![[
 				92, 197, 230, 82, 190, 13, 230, 242, 120, 5, 179, 4, 100, 255, 155, 0, 244, 137,
-				240, 201
+				240, 201,
 			]],
 			piece_size: 65536,
 			last_piece_size: 20,
 			files: vec![FileInfo {
 				path: std::path::PathBuf::from("sample.txt"),
 				length: 20,
-				offset: 0
-			}]
+				offset: 0,
+			}],
 		};
 
 		assert_eq!(

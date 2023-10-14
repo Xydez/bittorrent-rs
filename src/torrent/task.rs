@@ -41,14 +41,14 @@
 
 use std::{
 	collections::{HashMap, HashSet},
-	sync::Arc
+	sync::Arc,
 };
 
 use common::util;
 use log::{error, info, trace, warn};
 use protocol::{
 	tracker::{self, Announce, Response, Tracker},
-	wire::connection::{Handshake, Wire}
+	wire::connection::{Handshake, Wire},
 };
 use rand::Rng;
 use thiserror::Error;
@@ -58,11 +58,11 @@ use tokio_util::task::JoinMap;
 use crate::{
 	core::{
 		configuration::Configuration,
-		event::{Event, PeerEvent, TorrentEvent}
+		event::{Event, PeerEvent, TorrentEvent},
 	},
 	peer::{self, Peer, PeerHandle},
 	session::{EventSender, TorrentPtr},
-	torrent::WorkerId
+	torrent::WorkerId,
 };
 
 #[derive(Error, Debug)]
@@ -75,7 +75,7 @@ pub enum Command {
 	/// The torrent task is shutting down
 	Shutdown,
 	/// The torrent task has completed downloading the torrent
-	Complete
+	Complete,
 }
 
 pub type CommandSender = tokio::sync::mpsc::UnboundedSender<Command>;
@@ -89,7 +89,7 @@ pub async fn run(
 	mut cmd_rx: CommandReceiver,
 	event_tx: EventSender,
 	(conn_tx, mut conn_rx): (PeerSender, PeerReceiver),
-	config: Arc<Configuration>
+	config: Arc<Configuration>,
 ) -> Result<()> {
 	// Map of a worker's id to handle
 	let mut worker_data: HashMap<WorkerId, (PeerHandle, Option<OwnedSemaphorePermit>)> =
@@ -119,7 +119,7 @@ pub async fn run(
 			uploaded: 0,
 			downloaded: 0,
 			left: lock.left(),
-			event: Some(tracker::Event::Started)
+			event: Some(tracker::Event::Started),
 		};
 
 		try_announce(&mut lock.state.tracker, announce, &config)
@@ -178,7 +178,7 @@ pub async fn run(
 							.send_handshake(&Handshake::new(
 								info_hash,
 								config.peer_id,
-								config.extensions
+								config.extensions,
 							))
 							.await
 						{
@@ -226,7 +226,7 @@ pub async fn run(
 			response.interval.min(
 				last_announce_response
 					.min_interval
-					.unwrap_or(config.announce_min_interval)
+					.unwrap_or(config.announce_min_interval),
 			)
 		} else {
 			response.interval
@@ -371,7 +371,7 @@ pub async fn run(
 			uploaded: lock.state.stats.uploaded(),
 			downloaded: lock.state.stats.downloaded(),
 			left: lock.left(),
-			event: Some(tracker::Event::Started)
+			event: Some(tracker::Event::Started),
 		};
 
 		try_announce(&mut lock.state.tracker, announce, &config)
@@ -385,7 +385,7 @@ pub async fn run(
 async fn try_announce(
 	tracker: &mut Tracker,
 	announce: Announce,
-	config: &Configuration
+	config: &Configuration,
 ) -> Option<Response> {
 	for i in 0..config.announce_attempts {
 		info!(
