@@ -1,3 +1,4 @@
+use common::util::div_ceil;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -18,7 +19,7 @@ pub struct Bitfield {
 impl Bitfield {
 	pub fn new(length: usize) -> Bitfield {
 		Bitfield {
-			data: vec![0; length.div_ceil(8)],
+			data: vec![0; div_ceil(length, 8)],
 			length,
 		}
 	}
@@ -115,7 +116,7 @@ impl Bitfield {
 		self.length
 	}
 
-	/// Get the size of the bitfield in bytes, in other words `length.div_ceil(8)`
+	/// Get the size of the bitfield in bytes, in other words `div_ceil(length, 8)`
 	pub fn size(&self) -> usize {
 		self.data.len()
 	}

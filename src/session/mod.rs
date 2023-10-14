@@ -26,8 +26,6 @@ pub type TorrentPtr = Arc<Torrent>;
 pub type PeerPtr = Arc<Mutex<Peer>>;
 pub type PieceDownloadPtr = Arc<Mutex<PieceDownload>>;
 
-pub trait EventCallback = Fn(&Session, &Event);
-
 pub struct SessionHandle {
 	data: Arc<Mutex<Session>>,
 	cmd_tx: CommandSender,

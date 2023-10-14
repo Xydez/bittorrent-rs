@@ -1,9 +1,9 @@
 [package]
 name = "io"
-edition.workspace = true
-version.workspace = true
-authors.workspace = true
-license.workspace = true
+edition = { workspace = true }
+version = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
 
 [features]
 resume = []
@@ -11,11 +11,12 @@ resume = []
 [dependencies]
 # Crate dependencies
 # Workspace dependencies
-thiserror.workspace = true
+thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 # Local dependencies
-protocol.path = "../protocol"
+common = { workspace = true }
+protocol = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions.workspace = true
+pretty_assertions = { workspace = true }

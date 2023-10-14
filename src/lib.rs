@@ -1,6 +1,4 @@
 #![doc = include_str!("../README.md")]
-#![feature(trait_alias)]
-#![feature(int_roundings)]
 
 pub mod core;
 pub mod peer;

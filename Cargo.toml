@@ -22,6 +22,10 @@ rand = "0.8"
 serde = "1"
 sha1 = "0.10"
 
+common = { path = "crates/common" }
+protocol = { path = "crates/protocol" }
+io = { path = "crates/io" }
+
 [package]
 name = "bittorrent"
 description = "lightweight implementation of the bittorrent v1 protocol"
@@ -29,10 +33,10 @@ repository = "https://github.com/Xydez/bittorrent-rs"
 keywords = ["bittorrent", "torrent", "p2p", "networking"]
 categories = ["network-programming"]
 
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
 # Crate dependencies
@@ -40,18 +44,18 @@ tap = "1"
 tokio-util = { version = "0.7", features = ["rt"] }
 
 # Workspace dependencies
-log.workspace = true
+log = { workspace = true }
 tokio = { workspace = true, features = ["macros"] }
-#tracing.workspace = true
-thiserror.workspace = true
-rand.workspace = true
+#tracing = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-sha1.workspace = true
+sha1 = { workspace = true }
 
 # Local dependencies
-common.path = "crates/common"
-io = { path = "crates/io", features = ["resume"] }
-protocol.path = "crates/protocol"
+common = { workspace = true }
+io = { workspace = true, features = ["resume"] }
+protocol = { workspace = true }
 
 [dev-dependencies]
-pretty_assertions.workspace = true
+pretty_assertions = { workspace = true }

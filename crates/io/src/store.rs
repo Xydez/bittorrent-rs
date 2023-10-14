@@ -8,6 +8,7 @@ use std::{
 use protocol::metainfo::MetaInfo;
 
 use crate::resume::{Resume, ResumeData, ResumeError};
+use common::util::div_ceil;
 
 type Error = Box<dyn std::error::Error>;
 
@@ -110,11 +111,10 @@ impl FileStore {
 
 		let has_pieces = vec![
 			false;
-			files
-				.iter()
-				.map(|(length, _, _)| length)
-				.sum::<usize>()
-				.div_ceil(piece_size)
+			div_ceil(
+				files.iter().map(|(length, _, _)| length).sum::<usize>(),
+				piece_size
+			)
 		];
 
 		Ok(FileStore {

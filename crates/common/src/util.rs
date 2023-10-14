@@ -98,6 +98,19 @@ pub fn set_bit(bytes: &mut [u8], i: usize, value: bool) {
 	}
 }
 
+#[inline]
+#[must_use = "this returns the result of the operation, without modifying the original"]
+pub const fn div_ceil(lhs: usize, rhs: usize) -> usize {
+	let d = lhs / rhs;
+	let r = lhs % rhs;
+
+	if r > 0 && rhs > 0 {
+		d + 1
+	} else {
+		d
+	}
+}
+
 pub fn fmt_duration(duration: std::time::Duration) -> String {
 	let duration = duration.as_secs_f64();
 	let mut str = String::new();
